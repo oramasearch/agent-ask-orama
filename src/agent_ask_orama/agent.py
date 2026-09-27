@@ -38,6 +38,10 @@ class Capability:
     name: str
     read: bool
     summary: str
+    # Whether lake's input for it has a customer_id (a query parameter or a body property).
+    takes_customer: bool = True
+    # The inputs it requires besides the space: what a request must name, or Ask Orama find.
+    required: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -78,8 +82,27 @@ def capability_index(openapi: dict[str, Any]) -> dict[str, Capability]:
             if method not in {"get", "post"}:
                 continue
             summary = (operation.get("summary") or operation.get("description") or "").strip()
-            index[name] = Capability(name, method == "get", summary.split("\n")[0][:140])
+            index[name] = Capability(name, method == "get", summary.split("\n")[0][:140],
+                                     "customer_id" in input_fields(operation),
+                                     frozenset(required_fields(operation) - {"customer_id"}))
     return index
+
+
+def input_fields(operation: dict[str, Any]) -> set[str]:
+    """The names a capability's input accepts: its query parameters or its JSON body's properties."""
+    fields = {parameter.get("name", "") for parameter in operation.get("parameters") or []}
+    schema = (((operation.get("requestBody") or {}).get("content") or {})
+              .get("application/json") or {}).get("schema") or {}
+    return fields | set((schema.get("properties") or {}).keys())
+
+
+def required_fields(operation: dict[str, Any]) -> set[str]:
+    """The names a capability's input requires."""
+    fields = {parameter.get("name", "") for parameter in operation.get("parameters") or []
+              if parameter.get("required")}
+    schema = (((operation.get("requestBody") or {}).get("content") or {})
+              .get("application/json") or {}).get("schema") or {}
+    return fields | set(schema.get("required") or [])
 
 
 def index_text(index: dict[str, Capability]) -> str:
@@ -150,7 +173,9 @@ class Lake:
 
 def with_customer(capability: Capability | None, arguments: dict[str, Any],
                   customer_id: str) -> dict[str, Any]:
-    """The space the person is working in, unless the call names another."""
+    """The space the person is working in, unless the call names another or takes no space."""
+    if capability is not None and not capability.takes_customer:
+        return arguments
     if customer_id and "customer_id" not in arguments:
         return {**arguments, "customer_id": customer_id}
     return arguments

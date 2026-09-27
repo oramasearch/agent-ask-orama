@@ -10,11 +10,24 @@ import httpx
 
 from agent_ask_orama import agent, service
 
+CUSTOMER = [{"in": "query", "name": "customer_id", "required": True}]
+
+
+def body(*names):
+    return {"content": {"application/json": {"schema": {
+        "properties": {name: {"type": "string"} for name in names}}}}}
+
+
 OPENAPI = {"paths": {
-    "/v1/list_repositories": {"get": {"summary": "List repositories"}},
-    "/v1/workspace_query": {"get": {"summary": "Query a workspace"}},
-    "/v1/create_repository": {"post": {"summary": "Create a repository"}},
-    "/v1/agent_turn": {"post": {"summary": "Talk to an agent"}},
+    "/v1/list_repositories": {"get": {"summary": "List repositories", "parameters": CUSTOMER}},
+    "/v1/identity": {"get": {"summary": "This lake's identity", "parameters": []}},
+    "/v1/get_repository": {"get": {"summary": "Get a repository", "parameters": CUSTOMER + [
+        {"in": "query", "name": "repository_id", "required": True}]}},
+    "/v1/workspace_query": {"get": {"summary": "Query a workspace", "parameters": CUSTOMER}},
+    "/v1/create_repository": {"post": {"summary": "Create a repository",
+                                       "requestBody": body("customer_id", "name")}},
+    "/v1/agent_turn": {"post": {"summary": "Talk to an agent",
+                                "requestBody": body("customer_id", "agent", "message")}},
     "/v1/sign_in_password": {"post": {"summary": "Sign in"}},
     "/v1/repositories/{id}/sync/push": {"post": {"summary": "binary"}},
 }}
@@ -30,6 +43,11 @@ class FakeLake:
             return httpx.Response(200, json=OPENAPI)
         if request.url.path == "/v1/list_repositories":
             return httpx.Response(200, json={"ok": True, "value": {"items": [{"name": "site"}]}})
+        if request.url.path == "/v1/identity":
+            if "customer_id" in request.url.params:
+                return httpx.Response(400, json={"ok": False, "error": {
+                    "code": "invalid_input", "message": "unexpected field customer_id"}})
+            return httpx.Response(200, json={"ok": True, "value": {"id": "taap:lake"}})
         if request.url.path == "/v1/agent_turn":
             sent = json.loads(request.content)
             return httpx.Response(200, json={"ok": True, "value": {
@@ -79,8 +97,10 @@ def run(client, fake, history=None, **overrides):
 
 def test_the_index_is_lakes_own_openapi_without_ceremonies():
     index = agent.capability_index(OPENAPI)
-    assert set(index) == {"list_repositories", "workspace_query", "create_repository",
-                          "agent_turn"}
+    assert set(index) == {"list_repositories", "identity", "get_repository", "workspace_query",
+                          "create_repository", "agent_turn"}
+    assert index["get_repository"].required == {"repository_id"}
+    assert not index["list_repositories"].required, "the space is not a required input"
     assert index["list_repositories"].read and not index["create_repository"].read
 
 
@@ -155,9 +175,11 @@ def test_a_service_turn_needs_the_persons_key_and_keeps_the_conversation(tmp_pat
 def test_evals_are_generated_from_the_index_and_graded_by_rules():
     from agent_ask_orama import evals
     index = agent.capability_index(OPENAPI)
-    cases = evals.generate(index, changes=2, reads=2)
+    cases = evals.generate(index, changes=2, reads=2, clarify=2)
     kinds = {case.kind for case in cases}
-    assert kinds == {"change", "read", "delegate"}
+    assert kinds == {"change", "read", "clarify", "delegate"}
+    assert all(not index[c.expect].required for c in cases if c.kind in {"change", "read"}), \
+        "a change or read case can be done as asked"
     change = next(case for case in cases if case.kind == "change")
     good = {"reply": "", "reads": [], "delegations": [],
             "proposals": [{"capability": change.expect, "input": {}, "impact": ""}]}
@@ -166,3 +188,30 @@ def test_evals_are_generated_from_the_index_and_graded_by_rules():
         "a write sent without confirmation fails the case"
     invented = {**good, "proposals": [{"capability": "invented_thing", "input": {}, "impact": ""}]}
     assert not evals.grade(change, invented, index, []).passed
+
+    clarify = next(case for case in cases if case.kind == "clarify")
+    assert clarify.expect == "get_repository"
+    nothing = {"reply": "", "reads": [], "proposals": [], "delegations": []}
+    asked = {**nothing, "reply": "Which repository should I get?"}
+    assert evals.grade(clarify, asked, index, []).passed, "asking for the id passes"
+    found = {**nothing, "reads": [{"capability": "list_repositories"},
+                                  {"capability": "get_repository"}]}
+    assert evals.grade(clarify, found, index, []).passed, "finding the id, then reading, passes"
+    guessed = {**nothing, "reads": [{"capability": "get_repository"}]}
+    assert not evals.grade(clarify, guessed, index, []).passed, "a guessed id fails"
+    silent = {**nothing, "reply": "Done."}
+    assert not evals.grade(clarify, silent, index, []).passed
+
+
+def test_a_read_that_takes_no_space_is_sent_without_one():
+    # Live eval 2026-09-27: identity refused "unexpected field customer_id" on every try.
+    index = agent.capability_index(OPENAPI)
+    assert not index["identity"].takes_customer and index["list_repositories"].takes_customer
+    assert index["create_repository"].takes_customer
+    fake = FakeLake()
+    client = Scripted(message(tool_calls=[call("lake_read", capability="identity")]),
+                      message(content="This lake is taap:lake."))
+    answer = run(client, fake)
+    sent = next(r for r in fake.requests if r.url.path == "/v1/identity")
+    assert "customer_id" not in sent.url.params
+    assert answer.reads and answer.reply == "This lake is taap:lake."

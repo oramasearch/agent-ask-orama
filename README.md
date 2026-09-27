@@ -36,9 +36,12 @@ Orama key the operator mounts. Conversations live in memory by id. Every turn is
 ## Evals
 
 `ask-orama-evals` (`evals.py`) generates cases from the live lake's capability index (a sample of
-changes and reads, plus delegations) and grades each by rule: a change must be **proposed** with
-**no write sent**, a read must be called, a Pipeline request must reach `agent-project` and an
-opportunity request `agent-autosuggest`, and nothing may name a capability lake does not have.
+changes and reads, requests missing an input, plus delegations) and grades each by rule: a change
+must be **proposed** with **no write sent**, a read must be called, a request that needs an id it
+does not give must be answered with a question or a lookup first (never a guessed value), a Pipeline
+request must reach `agent-project` and an opportunity request `agent-autosuggest`, and nothing may
+name a capability lake does not have. Change and read cases sample only capabilities whose required
+inputs are the space alone, so they can be done as asked.
 
 ```sh
 LAKE_URL=https://lake.oramadev.net LAKE_TOKEN=<a person's token> CUSTOMER_ID=<their space> \

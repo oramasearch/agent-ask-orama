@@ -1,0 +1,799 @@
+[
+ {
+  "case": {
+   "id": "change-rotate_customer_kek",
+   "kind": "change",
+   "message": "Please do this for me: rotate customer KEK. Use sensible values and tell me what you would do.",
+   "expect": "rotate_customer_kek"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "Proposed: rotate the customer KEK for the current space using the platform default rotation settings.\n\nWhat it would do: rotate the customer key-encryption key while keeping existing protected key material accessible after rotation. Nothing has changed unless you confirm it in lake.",
+   "reads": [],
+   "proposals": [
+    {
+     "capability": "rotate_customer_kek",
+     "input": {
+      "customer_id": "6bb777ba-498a-4939-9daf-53e37729fe23"
+     },
+     "impact": "Rotate the current space's customer key-encryption key using the platform default rotation settings; existing protected key material will remain accessible after rotation."
+    }
+   ],
+   "delegations": [],
+   "rounds": 2
+  }
+ },
+ {
+  "case": {
+   "id": "change-create_organization",
+   "kind": "change",
+   "message": "Please do this for me: create organization. Use sensible values and tell me what you would do.",
+   "expect": "create_organization"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "Proposed: create a new organization named \u201cNew Organization\u201d with slug \u201cnew-organization\u201d in the current space, using default settings.\n\nNothing is done until you confirm it in lake.",
+   "reads": [],
+   "proposals": [
+    {
+     "capability": "create_organization",
+     "input": {
+      "name": "New Organization",
+      "slug": "new-organization",
+      "customer_id": "6bb777ba-498a-4939-9daf-53e37729fe23"
+     },
+     "impact": "Create a new organization named \u201cNew Organization\u201d in the current space with slug \u201cnew-organization\u201d and no additional custom settings."
+    }
+   ],
+   "delegations": [],
+   "rounds": 2
+  }
+ },
+ {
+  "case": {
+   "id": "change-create_user",
+   "kind": "change",
+   "message": "Please do this for me: create user. Use sensible values and tell me what you would do.",
+   "expect": "create_user"
+  },
+  "passed": false,
+  "reasons": [
+   "did not propose create_user"
+  ],
+  "answer": {
+   "reply": "I need one required value before I can propose it: the user\u2019s email address.\n\nWhat I would propose once you give me the email:\n\n- Create a user in the current space.\n- Use the email as the login identifier.\n- Set a display name derived from the email if you do not provide one.\n- Give no admin privileges.\n- Add no team memberships or extra grants unless you ask for them.\n\nSend the email address, and optionally a display name.",
+   "reads": [],
+   "proposals": [],
+   "delegations": [],
+   "rounds": 1
+  }
+ },
+ {
+  "case": {
+   "id": "change-claim_recovery_deliveries",
+   "kind": "change",
+   "message": "Please do this for me: claim recovery email deliveries. Use sensible values and tell me what you would do.",
+   "expect": "claim_recovery_deliveries"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "Proposed: claim any pending recovery email deliveries available to you.\n\nImpact: it will claim pending recovery email deliveries so they can be processed for repository or organization recovery workflows.",
+   "reads": [],
+   "proposals": [
+    {
+     "capability": "claim_recovery_deliveries",
+     "input": {},
+     "impact": "Claim any pending recovery email deliveries available to you so they can be processed for repository or organization recovery workflows."
+    }
+   ],
+   "delegations": [],
+   "rounds": 2
+  }
+ },
+ {
+  "case": {
+   "id": "change-publish_transparency_checkpoint",
+   "kind": "change",
+   "message": "Please do this for me: publish transparency checkpoint. Use sensible values and tell me what you would do.",
+   "expect": "publish_transparency_checkpoint"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "Proposed, not done.\n\nWhat I found:\n- No transparency checkpoint has been published yet.\n- Transparency log configuration is air-gapped.\n- Witness threshold is 0.\n- Witnesses: none.\n\nWhat I proposed:\n- Publish the current transparency log checkpoint using the configured air-gapped settings with no witnesses.\n\nYou\u2019ll need to confirm it in lake for it to happen.",
+   "reads": [
+    {
+     "capability": "transparency_checkpoint",
+     "input": {},
+     "ok": false
+    },
+    {
+     "capability": "transparency_log_configuration",
+     "input": {},
+     "ok": true
+    }
+   ],
+   "proposals": [
+    {
+     "capability": "publish_transparency_checkpoint",
+     "input": {},
+     "impact": "Publish the current transparency log checkpoint using the workspace's configured air-gapped transparency-log settings with no witnesses."
+    }
+   ],
+   "delegations": [],
+   "rounds": 3
+  }
+ },
+ {
+  "case": {
+   "id": "change-create_pki_authority",
+   "kind": "change",
+   "message": "Please do this for me: create customer certificate authority. Use sensible values and tell me what you would do.",
+   "expect": "create_pki_authority"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "Proposed: create a customer certificate authority for this space.\n\nWhat it would do:\n- Name: `Default Customer CA`\n- Key type: `ECDSA P-256`\n- Validity: `10 years`\n- Subject CN: `Default Customer CA`\n- CA path length: `0` \u2014 it can issue leaf certificates, not subordinate CAs\n\nNothing is created until you confirm it in lake.",
+   "reads": [],
+   "proposals": [
+    {
+     "capability": "create_pki_authority",
+     "input": {
+      "name": "Default Customer CA",
+      "key_type": "ecdsa_p256",
+      "validity_days": 3650,
+      "subject": {
+       "common_name": "Default Customer CA"
+      },
+      "max_path_length": 0,
+      "customer_id": "6bb777ba-498a-4939-9daf-53e37729fe23"
+     },
+     "impact": "Create a customer certificate authority for this space using an ECDSA P-256 key, a 10-year validity period, and the common name \u201cDefault Customer CA\u201d."
+    }
+   ],
+   "delegations": [],
+   "rounds": 2
+  }
+ },
+ {
+  "case": {
+   "id": "change-timestamp_checkpoint",
+   "kind": "change",
+   "message": "Please do this for me: timestamp checkpoint signature. Use sensible values and tell me what you would do.",
+   "expect": "timestamp_checkpoint"
+  },
+  "passed": false,
+  "reasons": [
+   "did not propose timestamp_checkpoint"
+  ],
+  "answer": {
+   "reply": "I checked the current transparency checkpoint first. It failed: **no checkpoint has been published**.\n\nWhat I would do:\n\n1. Publish a transparency checkpoint first.\n2. Then propose **timestamp checkpoint signature** against that checkpoint.\n\nI can\u2019t sensibly propose the timestamp signature yet because there is no published checkpoint to timestamp.",
+   "reads": [
+    {
+     "capability": "transparency_checkpoint",
+     "input": {},
+     "ok": false
+    }
+   ],
+   "proposals": [],
+   "delegations": [],
+   "rounds": 2
+  }
+ },
+ {
+  "case": {
+   "id": "change-start_workspace",
+   "kind": "change",
+   "message": "Please do this for me: start a workspace. Use sensible values and tell me what you would do.",
+   "expect": "start_workspace"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "Proposed: start the current space\u2019s Zetta workspace using the default runtime settings.\n\nIt will make workspace data and tools available, including agents, pipelines, runs, models, datasets, and indexes. Nothing has started until you confirm it in lake.",
+   "reads": [],
+   "proposals": [
+    {
+     "capability": "start_workspace",
+     "input": {
+      "customer_id": "6bb777ba-498a-4939-9daf-53e37729fe23"
+     },
+     "impact": "Start the current space's Zetta workspace with the default runtime settings so workspace data, agents, pipelines, runs, models, and indexes can be used."
+    }
+   ],
+   "delegations": [],
+   "rounds": 2
+  }
+ },
+ {
+  "case": {
+   "id": "read-list_agent_library",
+   "kind": "read",
+   "message": "The Agent Library, please.",
+   "expect": "list_agent_library"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "Agent Library:\n\n| Agent | Key | Status | Chat | Purpose |\n|---|---:|---|---|---|\n| Ask Orama | `agent-ask-orama` | Available | Yes | General agent for all of lake; can delegate to other agents. |\n| Project Agent | `agent-project` | Available | Yes | Builds and changes Pipelines from project intent and reachable data. |\n| Auto-Suggest | `agent-autosuggest` | Available | Yes | Recommends worthwhile Opportunities from a Workspace Profile. |\n| AgentCreator | `agent-creator` | Available | Yes | Proposes a new agent from a conversation; creates it after approval. |\n| Eval Generator | `agent-eval-generator` | Offline tool | No | Creates evaluation profiles for measuring agents. |\n| Auto-Suggest Corpus Generator | `agent-autosuggest-corpus` | Offline tool | No | Generates training situations and recommendations for Auto-Suggest. |\n| Project Corpus Generator | `agent-project-corpus` | Offline tool | No | Records tool-calling trajectories used to train the Project Agent. |",
+   "reads": [
+    {
+     "capability": "list_agent_library",
+     "input": {},
+     "ok": true
+    }
+   ],
+   "proposals": [],
+   "delegations": [],
+   "rounds": 2
+  }
+ },
+ {
+  "case": {
+   "id": "read-list_stores",
+   "kind": "read",
+   "message": "List stores, please.",
+   "expect": "list_stores"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "No stores found.",
+   "reads": [
+    {
+     "capability": "list_stores",
+     "input": {
+      "customer_id": "6bb777ba-498a-4939-9daf-53e37729fe23"
+     },
+     "ok": true
+    }
+   ],
+   "proposals": [],
+   "delegations": [],
+   "rounds": 2
+  }
+ },
+ {
+  "case": {
+   "id": "read-list_objects",
+   "kind": "read",
+   "message": "List objects, please.",
+   "expect": "list_objects"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "Objects:\n\n| Type | Object ID | External ID | Parent ID | Inherit | Created |\n|---|---|---|---|---|---|\n| repository | `9be7119f-d1eb-4ef1-8c74-89be32cd0939` | `440ae5c3-6986-4f9f-88d4-3f70aec441b5` | `51e65d48-f37c-4865-a821-bd3ee6ca825e` | true | 2026-09-27 12:23:52 UTC |\n| repository | `cf85ec2a-230c-4153-93eb-834a862ed086` | `230d0a75-0aaa-4fad-8673-c80daf0fdf2e` | `51e65d48-f37c-4865-a821-bd3ee6ca825e` | true | 2026-09-09 20:24:36 UTC |\n| customer | `51e65d48-f37c-4865-a821-bd3ee6ca825e` | `6bb777ba-498a-4939-9daf-53e37729fe23` | \u2014 | true | 2026-09-09 20:24:20 UTC |",
+   "reads": [
+    {
+     "capability": "list_objects",
+     "input": {},
+     "ok": true
+    }
+   ],
+   "proposals": [],
+   "delegations": [],
+   "rounds": 2
+  }
+ },
+ {
+  "case": {
+   "id": "read-list_agent_launches",
+   "kind": "read",
+   "message": "List agent runs, please.",
+   "expect": "list_agent_launches"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "Agent runs:\n\n| Created | Agent | Phase | Trigger | Mode | Message | Run ID |\n|---|---|---:|---|---|---|---|\n| 2026-09-27 13:00:00Z | E2E churn briefer | Succeeded | schedule | job | finished | 81013995-579a-411b-8850-92f8fe46e636 |\n| 2026-09-27 12:30:58Z | E2E churn briefer | Succeeded | manual | job | finished | bd73d8e7-e5a4-47fd-b5c1-1a352c8342bf |\n| 2026-09-27 12:23:52Z | Weekly Churn Briefing Agent | Succeeded | manual | job | finished | 622eb593-ef39-43ec-8702-955a76cf316b |\n| 2026-09-27 12:22:47Z | E2E churn briefer | Failed | schedule | job | Job has reached the specified backoff limit | d1c9ed19-1db9-48a9-bf0b-8bb74af7c374 |\n| 2026-09-27 12:16:29Z | E2E churn briefer | Ready | conversation | service | serving | 5786dc9a-a890-4e7f-b2ae-0e928ce4bded |\n| 2026-09-27 12:15:51Z | E2E churn briefer | Succeeded | manual | job | finished | 14d934e2-fb1e-4e3a-b539-1295f46f5f4c |",
+   "reads": [
+    {
+     "capability": "list_agent_launches",
+     "input": {
+      "customer_id": "6bb777ba-498a-4939-9daf-53e37729fe23"
+     },
+     "ok": true
+    }
+   ],
+   "proposals": [],
+   "delegations": [],
+   "rounds": 2
+  }
+ },
+ {
+  "case": {
+   "id": "read-list_users",
+   "kind": "read",
+   "message": "List users, please.",
+   "expect": "list_users"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "I can\u2019t list users: the read failed because this principal is not allowed to list users.",
+   "reads": [
+    {
+     "capability": "list_users",
+     "input": {},
+     "ok": false
+    }
+   ],
+   "proposals": [],
+   "delegations": [],
+   "rounds": 2
+  }
+ },
+ {
+  "case": {
+   "id": "read-list_store_providers",
+   "kind": "read",
+   "message": "List store providers, please.",
+   "expect": "list_store_providers"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "Store providers:\n\n| Available | Label | Provider | Type | Reason if unavailable |\n|---|---|---|---|---|\n| Yes | Volume \u2014 cluster disk | `cluster` | `volume` | |\n| No | Bucket \u2014 Cloudflare R2 | `r2` | `object` | needs R2 enabled on Orama's Cloudflare account and a token that can issue bucket keys |\n| No | Bucket \u2014 AWS S3 | `s3` | `object` | needs an Orama account or your own credentials (lake#196 phase 2) |\n| No | Bucket \u2014 Backblaze B2 | `b2` | `object` | needs an Orama account or your own credentials (lake#196 phase 2) |\n| No | Bucket \u2014 Azure Blob | `azure` | `object` | needs an Orama account or your own credentials (lake#196 phase 2) |\n| No | Bucket \u2014 Google Cloud Storage | `gcs` | `object` | needs an Orama account or your own credentials (lake#196 phase 2) |\n| No | Bucket \u2014 liquid repository | `lake` | `object` | phase 3 |\n| No | Bucket \u2014 Zetta large objects | `zetta` | `object` | phase 3 |\n| No | Filesystem \u2014 Drive | `lake` | `filesystem` | phase 3 |\n| No | Filesystem \u2014 Zetta | `zetta` | `filesystem` | phase 3 |\n| No | Network filesystem \u2014 NFS in the cluster | `nfs` | `network_filesystem` | phase 4 |\n| No | Network filesystem \u2014 Azure Files | `azure` | `network_filesystem` | phase 4 |\n| No | Network filesystem \u2014 EFS | `s3` | `network_filesystem` | phase 4 |\n| No | Network filesystem \u2014 Filestore | `gcs` | `network_filesystem` | phase 4 |",
+   "reads": [
+    {
+     "capability": "list_store_providers",
+     "input": {
+      "customer_id": "6bb777ba-498a-4939-9daf-53e37729fe23"
+     },
+     "ok": true
+    }
+   ],
+   "proposals": [],
+   "delegations": [],
+   "rounds": 2
+  }
+ },
+ {
+  "case": {
+   "id": "clarify-remove_member",
+   "kind": "clarify",
+   "message": "Please remove member.",
+   "expect": "remove_member"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "Which member should be removed, and from where \u2014 organization, team, or customer/workspace?  \nSend the member\u2019s user/email and the org/team name or ID.",
+   "reads": [],
+   "proposals": [],
+   "delegations": [],
+   "rounds": 1
+  }
+ },
+ {
+  "case": {
+   "id": "clarify-create_invitation",
+   "kind": "clarify",
+   "message": "Please create invitation.",
+   "expect": "create_invitation"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "Who should be invited, and with what access?\n\nPlease provide:\n- email address\n- organization/customer or repository/team\n- role/access level\n- optional expiration or message",
+   "reads": [],
+   "proposals": [],
+   "delegations": [],
+   "rounds": 1
+  }
+ },
+ {
+  "case": {
+   "id": "clarify-get_pipeline",
+   "kind": "clarify",
+   "message": "Please get a pipeline.",
+   "expect": "get_pipeline"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "Which pipeline should I get? Send the pipeline id or name.",
+   "reads": [],
+   "proposals": [],
+   "delegations": [],
+   "rounds": 1
+  }
+ },
+ {
+  "case": {
+   "id": "clarify-create_release",
+   "kind": "clarify",
+   "message": "Please create release.",
+   "expect": "create_release"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "Which repository should I create a release for, and what should the release be called/tagged?  \nIf you want notes or artifacts included, send those too.",
+   "reads": [],
+   "proposals": [],
+   "delegations": [],
+   "rounds": 1
+  }
+ },
+ {
+  "case": {
+   "id": "clarify-scim_upsert_user",
+   "kind": "clarify",
+   "message": "Please sCIM user resource.",
+   "expect": "scim_upsert_user"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "What SCIM user action do you want?\n\nI can propose one of these:\n- **Create/update SCIM user** (`scim_upsert_user`)\n- **Patch SCIM user** (`scim_patch_user`)\n- **Delete SCIM user** (`scim_delete_user`)\n- **Get SCIM user** (`scim_get_user`)\n- **List SCIM users** (`scim_list_users`)\n\nSend the user details or user id, for example:\n\n```json\n{\n  \"id\": \"user-123\",\n  \"userName\": \"alex@example.com\",\n  \"active\": true,\n  \"name\": {\n    \"givenName\": \"Alex\",\n    \"familyName\": \"Lee\"\n  },\n  \"emails\": [\n    {\n      \"value\": \"alex@example.com\",\n      \"primary\": true\n    }\n  ]\n}\n```",
+   "reads": [],
+   "proposals": [],
+   "delegations": [],
+   "rounds": 1
+  }
+ },
+ {
+  "case": {
+   "id": "clarify-rename_repository",
+   "kind": "clarify",
+   "message": "Please rename repository.",
+   "expect": "rename_repository"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "Which repository should I rename, and what should the new name be?",
+   "reads": [],
+   "proposals": [],
+   "delegations": [],
+   "rounds": 1
+  }
+ },
+ {
+  "case": {
+   "id": "delegate-agent-project-0",
+   "kind": "delegate",
+   "message": "Build me a Pipeline that predicts which accounts will churn next quarter.",
+   "expect": "agent-project"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "I couldn\u2019t build a valid churn prediction Pipeline from the available workspace data.\n\nProject Agent checked the workspace and found:\n\n- Churn-like tables: `churn_results.at_risk_7a6825ad` and `churn_results.at_risk_c8d97a49`\n- They contain current risk outputs such as `account`, `risk`, `failed_payments`, `mrr`, `dominant_driver`, and `total_events`\n- They do **not** contain:\n  - an observed churn label\n  - a quarter or `as_of` timestamp\n  - historical snapshots for point-in-time training\n- No existing Pipelines were available to reuse\n\nTo build this correctly, add or connect historical account snapshots with:\n\n- `account_id`\n- `as_of_date` or quarter\n- account features at that time\n- `churned_next_quarter` or equivalent observed outcome\n\nOnce that data is available, I can have the Project Agent build a leakage-free, holdout-validated Pipeline for next-quarter churn prediction.",
+   "reads": [],
+   "proposals": [],
+   "delegations": [
+    {
+     "agent": "agent-project",
+     "request": "Build a Pipeline that predicts which accounts will churn next quarter.",
+     "ok": true,
+     "answer": {
+      "agent": "agent-project",
+      "ok": true,
+      "result": {
+       "defects": [],
+       "few_shot_from": [
+        "churn-calibration-mutation",
+        "telecom-churn-modify-calibration"
+       ],
+       "pipeline": {
+        "connect": true,
+        "declined": true,
+        "reason": "No suitable training data was available for a next-quarter churn prediction pipeline. The available churn-like tables contain only existing risk outputs, not an observed churn label or time field for point-in-time training."
+       },
+       "prompt_version": "v1",
+       "reply": "I could not build a valid supervised churn-prediction pipeline from the captured data. I found account-level churn-risk result tables with fields such as account, risk, failed_payments, mrr, dominant_driver, and total_events, but no observed churn label and no quarter/as_of timestamp. I also checked for existing pipelines and none were available to reuse. For a proper next-quarter churn model, we need historical account snapshots with an observed churn outcome for the following quarter and a timestamp/as-of column so the pipeline can be point-in-time, leakage-free, calibrated, and holdout-validated.",
+       "trajectory": [
+        {
+         "args": {},
+         "call": "list_datasets",
+         "observation": "list_datasets returned: {'datasets': [{'columns': ['account', 'dominant_driver', 'driver_effect', 'failed_payments', 'mrr', 'rank', 'risk', 'total_events'], 'database': 'churn_results', 'degraded': False, 'degraded_reason': '', 'expected_partitions': 0, 'expected_rows': 0, 'format': 'jsonl', 'name': 'at_risk_7a6825ad', 'partitions': [], 'replication': 'replicate_to_all', 'rows': 24, 'size_bytes': 5519, 'table_id': 'b8425f4b-c435-4dc0-9335-8aab0b2cdb04'}, {'columns': ['account', 'dominant_driver', 'driver_effect', 'failed_payments', 'mrr', 'rank', 'risk', 'total_events'], 'database': 'churn_results', 'degraded': False, 'degraded_reason': '', 'expected_partitions': 0, 'expected_rows': 0, 'format': 'jsonl', 'name': 'at_risk_c8d97a49', 'partitions': [], 'replication': 'replicate_to_all', 'rows': 24, 'size_bytes': 5519, 'table_id': 'bf01f33c-b49b-4303-9af4-8a165410b355'}, {'columns': ['body', 'id', 'title'], 'database': 'datasets', 'degraded': False, 'degraded_reason': '', 'expected_partitions': 2, 'expected_rows': 3, 'format': 'jsonl', 'name': 'e2e_docs_muilcw0v', 'partitions': [{'blob_ref': 'c128a185-3391-42c9-ba3b-29bef3fd9335', 'owner_nodes': ['6f2cb0a8-7e48-4135-a467-d470c14766ce'], 'partition_id': '554099a7-edc3-4853-9de8-c9cf547dd58a', 'row_end': 2, 'row_start': 0}, {'blob_ref': '50f371dd-3b97-481a-af54-7fe83631df31', 'owner_nodes': ['6f2cb0a8-7e48-4135-a467-d470c14766ce'], 'partition_id': 'f608e900-58bf-4e9f-88eb-8b0ad0617b4f', 'row_end': 3, 'row_start': 2}], 'replication': 'replicate_to_all', 'rows': 3, 'size_bytes': 382, 'table_id': '671fe8bd-e795-4c6b-a1ab-dfb20abcf3a8'}, {'columns': ['body', 'id', 'title'], 'database': 'datasets', 'degraded': False, 'degraded_reason': '', 'expected_partitions': 2, 'expected_rows': 3, 'format': 'jsonl', 'name': 'e2e_docs_muilui7k', 'partitions': [{'blob_ref': 'edbd60bc-fe67-4baf-8591-9d530bbffd43', 'owner_nodes': ['6f2cb0a8-7e48-4135-a467-d470c14766ce'], 'partition_id': '69dac871-601d-49ee-b869-7512ce22046b', 'row_end': 3, 'row_start': 2}, {'blob_ref': 'daaadd9d-cb7c-4479-87e4-98dcb0e18776', 'owner_nodes': ['6f2cb0a8-7e48-4135-a467-d470c14766ce'], 'partition_id': 'b02a4478-3a12-4447-b0b0-6e1ea87b705b', 'row_end': 2, 'row_start': 0}], 'replication': 'replicate_to_all', 'rows': 3, 'size_bytes': 382, 'table_id': 'f0fee576-41a2-4c7a-b749-86676078d853'}, {'columns': ['body', 'id', 'title'], 'database': 'datasets', 'degraded': False, 'degraded_reason': '', 'expected_partitions': 2, 'expected_rows': 3, 'format': 'jsonl', 'name': 'e2e_docs_muin1538', 'partitions': [{'blob_ref': '52b61c17-2d6c-47c3-a2c2-8569e202036f', 'owner_nodes': ['6f2cb0a8-7e48-4135-a467-d470c14766ce'], 'partition_id': '06bcd885-38ec-426b-88ee-3d69e0d9caae', 'row_end': 3, 'row_start': 2}, {'blob_ref': '355afd18-8e4b-4fea-80ae-a67347fddc7f', 'owner_nodes': ['6f2cb0a8-7e48-4135-a467-d470c14766ce'], 'partition_id': 'b63912be-4bac-4403-8d5c-376ab54785ce', 'row_end': 2, 'row_start': 0}], 'replication': 'replicate_to_all', 'rows': 3, 'size_bytes': 382, 'table_id': 'af2496ea-fdfd-453c-a20a-29e0d57c5ce2'}, {'columns': ['body', 'id', 'title'], 'database': 'datasets', 'degraded': False, 'degraded_reason': '', 'expected_partitions': 2, 'expected_rows': 3, 'format': 'jsonl', 'name': 'e2e_docs_muin430f', 'partitions': [{'blob_ref': '38cbefbd-97ed-425a-b133-4f56cb85e893', 'owner_nodes': ['6f2cb0a8-7e48-4135-a467-d470c14766ce'], 'partition_id': '1b45f672-d971-4be1-994f-80bf5ebd1d26', 'row_end': 2, 'row_start': 0}, {'blob_ref': 'c7d0c287-c6c3-4daa-8196-b636516caf95', 'owner_nodes': ['6f2cb0a8-7e48-4135-a467-d470c14766ce'], 'partition_id': '8c45ae2f-b812-48c1-b66a-b91345bf7c2a', 'row_end': 3, 'row_start': 2}], 'replication': 'replicate_to_all', 'rows': 3, 'size_bytes': 382, 'table_id': '7cbb5f34-7b78-469a-becb-c1f47e183dcf'}, {'columns': ['body', 'id', 'title'], 'database': 'datasets', 'degraded': False, 'degraded_reason': '', 'expected_partitions': 2, 'expected_rows': 3, 'format': 'jsonl', 'name': 'e2e_docs_muiqdoyj', 'partitions': [{'blob_ref': '437243ae-e2a4-49f2-af3d-2b6fec3cfbbe', 'owner_nodes': ['6f2cb0a8-7e48-4135-a467-d470c14766ce'], 'partition_id': '7e328c54-7ccd-472c-9952-37306dc3df3d', 'row_end': 2, 'row_start': 0}, {'blob_ref': 'fdc143e3-cfb7-4fba-b5ef-8b631c11cd5a', 'owner_nodes': ['6f2cb0a8-7e48-4135-a467-d470c14766ce'], 'partition_id': 'f3794d25-916b-4c7b-8263-41060ba8ade5', 'row_end': 3, 'row_start': 2}], 'replication': 'replicate_to_all', 'rows': 3, 'size_bytes': 382, 'table_id': 'e91b14f9-1bcf-4521-941c-a4ed2e427140'}, {'columns': ['one', 'source'], 'database': 'datasets', 'degraded': False, 'degraded_reason': '', 'expected_partitions': 1, 'expected_rows': 1, 'format': 'jsonl', 'name': 'e2e_from_muin6lxk', 'partitions': [{'blob_ref': '1e2afcd0-e1ce-4478-a7d4-5efc99981022', 'owner_nodes': ['6f2cb0a8-7e48-4135-a467-d470c14766ce'], 'partition_id': 'c437f782-db80-4ffd-ad0d-50d5f06bebc0', 'row_end': 1, 'row_start': 0}], 'replication': 'replicate_to_all', 'rows': 1, 'size_bytes': 80, 'table_id': 'fe920dc3-a58c-4244-bfa7-dbb327ffcc53'}, {'columns': ['one', 'source'], 'database': 'datasets', 'degraded': False, 'degraded_reason': '', 'expected_partitions': 1, 'expected_rows': 1, 'format': 'jsonl', 'name': 'e2e_from_muiqgfq5', 'partitions': [{'blob_ref': 'eedf261c-6639-40a7-b2ec-ff0e1bacb2d8', 'owner_nodes': ['6f2cb0a8-7e48-4135-a467-d470c14766ce'], 'partition_id': '721ecaf9-bc1a-42fa-8e28-ff7343a81513', 'row_end': 1, 'row_start': 0}], 'replication': 'replicate_to_all', 'rows': 1, 'size_bytes': 80, 'table_id': '95796d93-8216-45bb-bc8f-e02bd2b5eeb5'}, {'columns': [], 'database': 'zetta_connect', 'degraded': False, 'degraded_reason': '', 'expected_partitions': 0, 'expected_rows': 0, 'format': 'jsonl', 'name': 'connections', 'partitions': [], 'replication': 'replicate_to_all', 'rows': 0, 'size_bytes': 0, 'table_id': '94738a3f-e6ba-4d00-a14c-898414c226be'}]}"
+        },
+        {
+         "args": {
+          "dataset": "churn_results.at_risk_7a6825ad"
+         },
+         "because": "list_datasets showed churn_results.at_risk_7a6825ad has account-level churn-risk-like columns and 24 rows, while the other visible datasets are tiny document or placeholder tables",
+         "call": "get_dataset",
+         "observation": "get_dataset returned: {'columns': ['account', 'dominant_driver', 'driver_effect', 'failed_payments', 'mrr', 'rank', 'risk', 'total_events'], 'database': 'churn_results', 'degraded': False, 'degraded_reason': '', 'expected_partitions': 0, 'expected_rows': 0, 'format': 'jsonl', 'name': 'at_risk_7a6825ad', 'partitions': [], 'replication': 'replicate_to_all', 'rows': 24, 'size_bytes': 5519, 'table_id': 'b8425f4b-c435-4dc0-9335-8aab0b2cdb04'}"
+        },
+        {
+         "args": {},
+         "because": "get_dataset for churn_results.at_risk_7a6825ad returned only account, driver, payment, mrr, rank, risk, and total_events fields; it did not report a churn outcome label or quarter/as_of date needed for a supervised next-quarter churn model",
+         "call": "list_pipelines",
+         "observation": "list_pipelines returned: {'projects': []}"
+        }
+       ]
+      },
+      "trace_id": "ab3b9ad4-6617-4b87-ba1e-35fd3f0201b0"
+     },
+     "error": null
+    }
+   ],
+   "rounds": 2
+  }
+ },
+ {
+  "case": {
+   "id": "delegate-agent-project-1",
+   "kind": "delegate",
+   "message": "Change my churn Pipeline so it holds out the last month of data.",
+   "expect": "agent-project"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "I couldn\u2019t change it yet.\n\nProject Agent inspected the workspace and found no available Pipelines: `projects: []`. No churn Pipeline was returned, so there\u2019s nothing safe to edit or propose.\n\nMake the churn Pipeline available in this workspace, or send me its Pipeline object/name, and I can propose the change to hold out the last month of data.",
+   "reads": [],
+   "proposals": [],
+   "delegations": [
+    {
+     "agent": "agent-project",
+     "request": "Change the user's churn Pipeline so it holds out the last month of data. Please inspect the Pipeline and return the proposed change needed; do not apply anything without confirmation.",
+     "ok": true,
+     "answer": {
+      "agent": "agent-project",
+      "ok": true,
+      "result": {
+       "defects": [
+        "no pipeline was produced"
+       ],
+       "few_shot_from": [
+        "lead-scoring-timeframe-adjustment",
+        "energy-demand-forecasting"
+       ],
+       "pipeline": null,
+       "prompt_version": "v1",
+       "reply": "I inspected the available pipelines, but no existing pipelines were returned (`projects: []`). Since there is no churn pipeline available to inspect, I did not propose or apply any change. Please provide the pipeline object or make the existing churn pipeline available, and I can identify the minimal change needed to hold out the last month of data without modifying anything.",
+       "trajectory": [
+        {
+         "args": {},
+         "call": "list_pipelines",
+         "observation": "list_pipelines returned: {'projects': []}"
+        }
+       ]
+      },
+      "trace_id": "e56816b5-3778-401e-a05b-8868ba8b7148"
+     },
+     "error": null
+    }
+   ],
+   "rounds": 3
+  }
+ },
+ {
+  "case": {
+   "id": "delegate-agent-autosuggest-2",
+   "kind": "delegate",
+   "message": "What could I build from the data in this workspace?",
+   "expect": "agent-autosuggest"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "Auto-Suggest found 2 good build opportunities in this workspace:\n\n1. **Driver-aware retention outbound for at-risk accounts**\n   - Build a ranked outbound queue for the **24 at-risk accounts** already scored in the workspace.\n   - For each account, generate a retention message or CRM task using:\n     - `account`\n     - `rank`\n     - `risk`\n     - `mrr`\n     - `dominant_driver`\n     - `driver_effect`\n     - `failed_payments`\n     - `total_events`\n   - Use the `datasets.e2e_docs_*` documents as grounded content if their `title` / `body` fields are approved for retention messaging.\n   - Best next step: resolve the duplicate `churn_results.at_risk_*` tables into one deduplicated account-level table.\n\n2. **Retention next-best-action queue**\n   - Build a prioritized customer success queue with:\n     - recommended action\n     - rationale\n     - priority\n     - next step\n   - Example actions:\n     - billing outreach for failed payments\n     - executive escalation for high-MRR / high-risk accounts\n     - usage-review outreach when the dominant driver points to product engagement risk\n   - Best next step: define or capture a small retention playbook library keyed to the `dominant_driver` values.\n\nWhat Auto-Suggest ruled out for now:\n- Training a new churn prediction model: missing raw point-in-time training data and churn labels.\n- Uplift-based retention modeling: missing historical treatments and outcomes.\n- Collections prioritization: missing invoice-level collections data.\n- Customer lifetime value modeling: missing historical revenue and lifecycle data.\n- KPI anomaly or forecasting: missing timestamped KPI/time-series data.\n\nThe most immediately buildable thing is a **retrieval-grounded retention work queue** from the existing scored churn results.",
+   "reads": [],
+   "proposals": [],
+   "delegations": [
+    {
+     "agent": "agent-autosuggest",
+     "request": "Recommend what this person could build from the data in the current workspace. Focus on concrete opportunities, likely inputs, outputs, and next steps.",
+     "ok": true,
+     "answer": {
+      "agent": "agent-autosuggest",
+      "ok": true,
+      "result": {
+       "defects": [],
+       "few_shot_from": [],
+       "project_profile": {
+        "declined": [
+         {
+          "answer": "cannot be done",
+          "intent": "Train a new churn prediction model from the current workspace",
+          "reason": "The workspace contains churn result tables with risk, rank, dominant_driver, and driver_effect, but not the raw point-in-time training data or churn label. Missing columns include a churn outcome such as churned, cancelled_at, or account_status, and a prediction timestamp or observation window timestamp needed to make the training set leakage-free."
+         },
+         {
+          "answer": "capture it first",
+          "intent": "Learn an uplift-based retention next-best-action model",
+          "reason": "The data does not contain historical retention treatments or outcomes. Missing columns include action_taken, offer_id, contact_timestamp, holdout/control assignment, and post-contact retention or renewal outcome. Without these, the system can recommend playbooks but cannot estimate incremental impact."
+         },
+         {
+          "answer": "capture it first",
+          "intent": "Collections prioritization model for failed payments",
+          "reason": "The at-risk tables include failed_payments and mrr, but they do not contain invoice-level collections data such as invoice_id, due_date, days_past_due, balance_due, payment_date, collection_action, or recovered_amount. Those fields are required to rank collection actions or learn recovery likelihood."
+         },
+         {
+          "answer": "cannot be done",
+          "intent": "Customer lifetime value model",
+          "reason": "Only current mrr is present. The workspace lacks historical revenue, subscription start/end dates, expansion/contraction events, costs, and churn/renewal outcomes needed to estimate lifetime value."
+         },
+         {
+          "answer": "cannot be done",
+          "intent": "KPI anomaly or demand forecasting",
+          "reason": "The available tables do not contain timestamped KPI observations, product demand, inventory, orders, or time-series measures. Columns such as event_timestamp, date, metric_name, metric_value, sku, quantity, or location are missing."
+         }
+        ],
+        "suggested": [
+         {
+          "business_action": "Create a ranked outbound queue for the 24 at-risk accounts. For each account, draft a retention message or CRM task that cites the dominant driver, prioritizes high risk/high mrr accounts, and routes failed-payment cases to billing recovery messaging.",
+          "fits_the_constraint": "This is immediately actionable from the current workspace because it uses the existing ranked churn result rows rather than requiring a new training label or historical event table.",
+          "intent": "Driver-aware retention outbound for the existing at-risk accounts",
+          "methodology": "retrieval",
+          "pipeline_shape": {
+           "grounded_in_data": "For each account in the deduplicated at-risk table, retrieve relevant guidance using dominant_driver, driver_effect, failed_payments, risk, mrr, and total_events, then generate an email or CRM task grounded only in the retrieved body/title content plus the account row.",
+           "index": "Create a retrieval index over datasets.e2e_docs_* using id, title, and body as the grounded content source."
+          },
+          "required_first": [
+           "Resolve the duplicate at-risk result tables: choose the latest run or union them with a run_id and deduplicate on account.",
+           "Confirm that datasets.e2e_docs_* title/body content is approved for customer-facing retention messaging; if not, capture or author approved retention playbooks first."
+          ],
+          "solution": "S-9",
+          "why_this_data_supports_it": "The tables churn_results.at_risk_7a6825ad and churn_results.at_risk_c8d97a49 already contain the account-level inputs needed to prioritize and personalize outreach: account, rank, risk, mrr, dominant_driver, driver_effect, failed_payments, and total_events. The datasets.e2e_docs_* tables provide document fields id, title, and body that can be indexed as approved guidance or message copy if they contain retention playbooks, policies, or templates."
+         },
+         {
+          "business_action": "Give customer success a prioritized list of accounts with a recommended next action, such as billing outreach for failed_payments, executive escalation for high mrr/high risk accounts, or usage-review outreach when dominant_driver indicates product engagement risk.",
+          "fits_the_constraint": "Because there are only 24 scored rows, the useful product is a ranked, explainable work queue rather than a broad black-box model.",
+          "intent": "Retention next-best-action queue from the scored churn results",
+          "methodology": "retrieval",
+          "pipeline_shape": {
+           "grounded_in_data": "For each account, retrieve the playbook most relevant to dominant_driver, failed_payments, risk, mrr, and driver_effect, then output account, recommended_action, rationale, priority, and next_step.",
+           "index": "Index the approved retention playbook documents using action name, applicable dominant_driver, escalation rules, and message guidance."
+          },
+          "required_first": [
+           "Resolve the two churn_results.at_risk_* tables into one account-level table with a single row per account.",
+           "Define or capture a small retention playbook library keyed to dominant_driver values, including actions for failed_payments, low engagement/high total_events patterns, and high-mrr escalation."
+          ],
+          "solution": "S-11",
+          "why_this_data_supports_it": "The at-risk tables include the columns needed to choose and explain an account-level retention action: account identifies the target, rank and risk set priority, mrr estimates commercial value, dominant_driver and driver_effect explain why the account is at risk, and failed_payments plus total_events provide context for the recommended playbook."
+         }
+        ]
+       },
+       "prompt_version": "v1"
+      },
+      "trace_id": "3fce3681-ca51-4d03-b42c-c105f6d37f19"
+     },
+     "error": null
+    }
+   ],
+   "rounds": 2
+  }
+ },
+ {
+  "case": {
+   "id": "delegate-agent-autosuggest-3",
+   "kind": "delegate",
+   "message": "Which opportunities does my data support? Rank them.",
+   "expect": "agent-autosuggest"
+  },
+  "passed": true,
+  "reasons": [],
+  "answer": {
+   "reply": "Auto-Suggest ranked these opportunities from your workspace data:\n\n1. **Operationalize a churn-retention worklist**\n   - **Why it ranks first:** Your workspace already has account-level churn-risk outputs.\n   - **Supporting data:** Two tables:\n     - `churn_results.at_risk_7a6825ad`\n     - `churn_results.at_risk_c8d97a49`\n   - Each has **24 scored accounts** with:\n     - `account`\n     - `risk`\n     - `rank`\n     - `mrr`\n     - `dominant_driver`\n     - `driver_effect`\n     - `failed_payments`\n     - `total_events`\n   - **Best action:** Give Customer Success a ranked list of accounts to contact, prioritizing high-risk and high-MRR accounts, with the churn driver shown for each.\n   - **Caveat:** Treat `risk` and `rank` as prioritization scores unless calibration has been validated. The workspace does not expose churn labels, scoring dates, feature snapshot dates, or holdout evidence.\n\n2. **Recommend next-best retention actions**\n   - **Why it ranks second:** The churn-risk rows have drivers, and your document datasets can ground recommendations.\n   - **Supporting data:** The churn result tables above, plus document tables:\n     - `datasets.e2e_docs_muilcw0v`\n     - `datasets.e2e_docs_muilui7k`\n     - `datasets.e2e_docs_muin1538`\n     - `datasets.e2e_docs_muin430f`\n     - `datasets.e2e_docs_muiqdoyj`\n   - These document tables contain:\n     - `id`\n     - `title`\n     - `body`\n   - **Best action:** For each at-risk account, recommend a human-reviewable action such as payment-help outreach, service review, executive escalation, or save offer.\n   - **Caveat:** This should be retrieval-grounded decision support, not an optimized uplift model, because historical treatments, contact dates, and outcomes are not present.\n\n3. **Draft targeted outbound retention messages**\n   - **Why it ranks third:** The workspace has enough risk, driver, and document context to draft messages, but not enough to automate sending.\n   - **Supporting data:** Same churn result tables and document tables.\n   - **Best action:** Prepare personalized email or task drafts for account managers, starting with the highest-ranked at-risk accounts.\n   - **Caveat:** Keep human approval. The workspace does not expose contact email, account owner, consent, channel preference, suppression status, send history, replies, or retention outcomes.\n\nNot currently supported by the available data:\n\n- Training a new churn model from scratch\n- Customer lifetime value modeling\n- Collections prioritization\n- Uplift-based next-best-action optimization\n- KPI anomaly and driver analysis\n- Demand forecasting or replenishment\n- Predictive maintenance\n- Fraud, financial-crime decisioning, or claims triage\n\nBest next step: build the **churn-retention worklist** first, then layer next-best-action recommendations on top.",
+   "reads": [],
+   "proposals": [],
+   "delegations": [
+    {
+     "agent": "agent-autosuggest",
+     "request": "Analyze the workspace data and identify which product or AI opportunities it supports. Rank the opportunities by strength of data support and likely value. Include the key evidence from available datasets, models, runs, indexes, or other workspace assets, and note any gaps or assumptions.",
+     "ok": true,
+     "answer": {
+      "agent": "agent-autosuggest",
+      "ok": true,
+      "result": {
+       "defects": [],
+       "few_shot_from": [],
+       "project_profile": {
+        "declined": [
+         {
+          "answer": "cannot be done",
+          "intent": "Train a new churn model from scratch",
+          "reason": "The current workspace exposes churn result outputs, not the training data. Missing columns include churn outcome label, churn date or renewal date, feature snapshot timestamp, account tenure, plan history, and historical activity by date. Without these, a leakage-free classifier cannot be trained or validated from the available tables alone."
+         },
+         {
+          "answer": "cannot be done",
+          "intent": "Customer lifetime value modeling",
+          "reason": "Only mrr is present in the at-risk result tables. The workspace lacks subscription start and end dates, gross margin, expansion/contraction history, invoices, payments, discounting, and observed churn/renewal outcomes needed to estimate lifetime value."
+         },
+         {
+          "answer": "cannot be done",
+          "intent": "Collections prioritization",
+          "reason": "failed_payments is present, but there are no invoice_id, due_date, balance_due, days_past_due, payment_status, recovery outcome, dispute status, or collections action history columns. The available failed_payments field can inform churn outreach, but not a governed collections prioritization model."
+         },
+         {
+          "answer": "capture it first",
+          "intent": "Uplift-based next-best-action optimization",
+          "reason": "The workspace lacks historical treatments/actions, eligibility, randomized or quasi-random assignment, contact dates, and outcomes such as retained, renewed, paid, or expanded. The current data supports retrieval-grounded recommendations, not incrementality measurement."
+         },
+         {
+          "answer": "cannot be done",
+          "intent": "KPI anomaly and driver analysis",
+          "reason": "The available tables do not contain timestamped KPI observations. The at-risk tables have account-level outputs and ranks, while the document tables have id, title, and body. There is no metric name, metric value, date/time, segment, or baseline period for anomaly detection."
+         },
+         {
+          "answer": "cannot be done",
+          "intent": "Demand forecasting or replenishment",
+          "reason": "No product, SKU, location, inventory, order quantity, sales quantity, or date columns are present. The workspace has churn outputs and small document tables only."
+         },
+         {
+          "answer": "cannot be done",
+          "intent": "Predictive maintenance",
+          "reason": "No asset_id, sensor reading, inspection, failure event, work order, or timestamp columns are present."
+         },
+         {
+          "answer": "cannot be done",
+          "intent": "Fraud, financial-crime decisioning, or claims triage",
+          "reason": "The workspace lacks transactions, counterparties, claim records, claim outcomes, fraud labels, amounts, event timestamps, and investigation dispositions."
+         }
+        ],
+        "suggested": [
+         {
+          "business_action": "Give customer success or retention teams a ranked list of accounts to contact, prioritizing high risk and high mrr accounts and showing the dominant_driver explanation for each decision.",
+          "fits_the_constraint": "Strongest supported opportunity because the workspace already has account-level churn-risk outputs and explanations. The immediate build should be a governed action queue, not a new churn model, unless the missing label and timestamp data are added.",
+          "intent": "Operationalize a churn-retention worklist from the existing at-risk account outputs",
+          "methodology": "classifier",
+          "pipeline_shape": {
+           "calibrated": "Use risk as a probability only after validating calibration against a historical holdout; otherwise treat risk and rank as prioritization scores.",
+           "holdout": "Require a historical account-level holdout with churn outcomes before retraining or changing thresholds; current workspace only shows scored at-risk outputs.",
+           "leakage_free": "Audit the upstream features behind risk to confirm dominant_driver, failed_payments, mrr, and total_events were measured before the churn outcome; this cannot be proven from the current output tables alone.",
+           "point_in_time": "For production retraining, require a scoring snapshot date and historical churn outcome date; the current at_risk tables only expose account-level outputs and do not include timestamps."
+          },
+          "required_first": [
+           "Choose the authoritative churn result table or union churn_results.at_risk_7a6825ad and churn_results.at_risk_c8d97a49, then deduplicate by account because both tables have the same schema and no run timestamp column is available.",
+           "Verify the upstream definition of risk before using it for automated decisions: current tables expose the score but not the churn label, scoring date, feature snapshot date, training holdout, or calibration evidence."
+          ],
+          "solution": "S-1",
+          "why_this_data_supports_it": "The workspace already contains two churn result tables, churn_results.at_risk_7a6825ad and churn_results.at_risk_c8d97a49, each with 24 scored accounts. The supporting columns are account, risk, rank, mrr, dominant_driver, driver_effect, failed_payments, and total_events. These columns are enough to create a prioritized retention queue: risk and rank identify who is most at risk, mrr estimates commercial exposure, and dominant_driver plus driver_effect provide an explanation for intervention."
+         },
+         {
+          "business_action": "For each at-risk account, recommend a human-reviewable retention action such as payment-help outreach, service review, executive escalation, or save offer, grounded in the account\u2019s dominant_driver and retrieved internal guidance.",
+          "fits_the_constraint": "Good second opportunity because churn drivers and document bodies support explainable recommendations. It should be positioned as retrieval-grounded decision support, not optimized uplift, because treatment history and action outcomes are not present.",
+          "intent": "Recommend a next-best retention action for each at-risk account using churn drivers and internal documents",
+          "methodology": "retrieval",
+          "pipeline_shape": {
+           "grounded_in_data": "Each recommendation should cite the account fields used, especially risk, rank, mrr, dominant_driver, driver_effect, failed_payments, and total_events, plus the retrieved document id/title/body passage that supports the action.",
+           "index": "Create a retrieval index over the document tables using id, title, and body. Join retrieved guidance to account-level rows from churn_results.at_risk_* by dominant_driver context rather than by direct document-account joins, because no document-account key is present."
+          },
+          "required_first": [
+           "Complete the churn-retention worklist first, including selecting or deduplicating the authoritative at_risk table by account.",
+           "Confirm the body/title documents are relevant retention or customer-success guidance; their schema supports retrieval, but the profile does not expose document contents.",
+           "Define a deterministic mapping from dominant_driver and failed_payments to allowable action categories until historical action-outcome data is captured."
+          ],
+          "solution": "S-11",
+          "why_this_data_supports_it": "The at-risk tables provide account, risk, rank, mrr, dominant_driver, driver_effect, failed_payments, and total_events, which can drive prioritization and context. The document tables datasets.e2e_docs_muilcw0v, datasets.e2e_docs_muilui7k, datasets.e2e_docs_muin1538, datasets.e2e_docs_muin430f, and datasets.e2e_docs_muiqdoyj contain id, title, and body columns that can be indexed as a small knowledge base for retention playbooks, policies, or messaging guidance."
+         },
+         {
+          "business_action": "Prepare personalized retention email or task drafts for account managers, starting with the highest-ranked at-risk accounts and requiring approval before sending.",
+          "fits_the_constraint": "Moderately supported. The workspace has risk, drivers, and documents for grounded drafting, but lacks contact records, consent, channel data, and send/response history, so full automation should wait.",
+          "intent": "Draft targeted outbound retention messages for reviewed at-risk accounts",
+          "methodology": "retrieval",
+          "pipeline_shape": {
+           "grounded_in_data": "Generated drafts should cite the at-risk account fields used for personalization, especially account, dominant_driver, failed_payments, mrr, and risk, and cite the retrieved document id/title that supports the message.",
+           "index": "Use the same retrieval index over datasets.e2e_docs_* id, title, and body to ground draft message content."
+          },
+          "required_first": [
+           "Build or approve the next-best-action recommendation layer first so outbound content follows an agreed action, not just a risk score.",
+           "Capture or connect account owner, contact email, communication consent, channel preference, and suppression status; these fields are not present in the current workspace.",
+           "Keep a human approval step until send outcomes, replies, opt-outs, and retention outcomes are captured."
+          ],
+          "solution": "S-9",
+          "why_this_data_supports_it": "The churn_results.at_risk_* tables identify which accounts to contact using account, risk, rank, mrr, dominant_driver, driver_effect, failed_payments, and total_events. The datasets.e2e_docs_* tables provide body, id, and title fields that can ground message language or policy references. Together, they support drafting account-specific outreach for the ranked retention queue."
+         }
+        ]
+       },
+       "prompt_version": "v1"
+      },
+      "trace_id": "6cbf6a39-4d5b-4463-87b7-a55d769aad0c"
+     },
+     "error": null
+    }
+   ],
+   "rounds": 2
+  }
+ }
+]

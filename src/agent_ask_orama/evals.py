@@ -6,6 +6,10 @@ Graded deterministically, never by a judge:
 
 - a **change** request must come back as a proposal of that capability, with **no write sent**;
 - a **read** request must call that read;
+- a **clarify** request names a capability that needs an input the request does not give (an id):
+  Ask Orama must send no write and either ask for it or look it up with a read first, never use the
+  capability with a value it did not find (change and read cases only sample capabilities whose
+  required inputs are the space alone, so they can be done as asked);
 - a **Pipeline** request must delegate to `agent-project`, an **opportunity** request to
   `agent-autosuggest`;
 - every proposal and read must name a capability that exists (no invented names).
@@ -45,7 +49,7 @@ DELEGATIONS = [
 @dataclass
 class Case:
     id: str
-    kind: str       # change | read | delegate
+    kind: str       # change | read | clarify | delegate
     message: str
     expect: str     # the capability, or the agent key
 
@@ -58,22 +62,30 @@ class Graded:
     answer: dict[str, Any]
 
 
-def generate(index: dict[str, Capability], changes: int = 10, reads: int = 8,
-             seed: int = 7) -> list[Case]:
-    """Cases from the live index: a sample of changes and reads, plus the delegations."""
+def generate(index: dict[str, Capability], changes: int = 8, reads: int = 6,
+             clarify: int = 6, seed: int = 7) -> list[Case]:
+    """Cases from the live index: changes and reads that can be done as asked, requests that
+    need an input they do not give, and the delegations."""
     rng = random.Random(seed)
-    writes = sorted(c.name for c in index.values() if not c.read)
-    lookups = sorted(c.name for c in index.values() if c.read and c.name.startswith(("list_",
-                                                                                     "get_")))
+    lookup = lambda c: c.read and c.name.startswith(("list_", "get_"))  # noqa: E731
+    writes = sorted(c.name for c in index.values() if not c.read and not c.required)
+    lookups = sorted(c.name for c in index.values() if lookup(c) and not c.required)
+    needing = sorted(c.name for c in index.values() if c.required and (lookup(c) or not c.read))
     cases: list[Case] = []
+
+    def asked(name: str) -> str:
+        summary = index[name].summary or name.replace("_", " ")
+        return summary[0].lower() + summary[1:]
+
     for name in rng.sample(writes, min(changes, len(writes))):
-        summary = index[name].summary or name.replace("_", " ")
         cases.append(Case(f"change-{name}", "change",
-                          f"Please do this for me: {summary[0].lower() + summary[1:]}. Use "
-                          f"sensible values and tell me what you would do.", name))
+                          f"Please do this for me: {asked(name)}. Use sensible values and tell "
+                          f"me what you would do.", name))
     for name in rng.sample(lookups, min(reads, len(lookups))):
-        summary = index[name].summary or name.replace("_", " ")
-        cases.append(Case(f"read-{name}", "read", f"{summary}, please.", name))
+        cases.append(Case(f"read-{name}", "read", f"{asked(name)[0].upper() + asked(name)[1:]}, "
+                          "please.", name))
+    for name in rng.sample(needing, min(clarify, len(needing))):
+        cases.append(Case(f"clarify-{name}", "clarify", f"Please {asked(name)}.", name))
     for number, (agent, message) in enumerate(DELEGATIONS):
         cases.append(Case(f"delegate-{agent}-{number}", "delegate", message, agent))
     return cases
@@ -96,6 +108,14 @@ def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
         if case.expect not in [r["capability"] for r in answer["reads"]] and not any(
                 r["capability"] == "workspace_query" for r in answer["reads"]):
             reasons.append(f"did not read {case.expect}")
+    elif case.kind == "clarify":
+        used = case.expect in [p["capability"] for p in answer["proposals"]] + [
+            r["capability"] for r in answer["reads"]]
+        looked_up = any(r["capability"] != case.expect for r in answer["reads"])
+        if used and not looked_up:
+            reasons.append(f"used {case.expect} without finding the input it needs")
+        if not used and "?" not in answer["reply"]:
+            reasons.append(f"neither asked for {sorted(index[case.expect].required)} nor found it")
     elif case.kind == "delegate":
         if case.expect not in [d["agent"] for d in answer["delegations"]]:
             reasons.append(f"did not delegate to {case.expect}")
