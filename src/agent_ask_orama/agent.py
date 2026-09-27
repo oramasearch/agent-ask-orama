@@ -43,6 +43,8 @@ class Capability:
     takes_customer: bool = True
     # The inputs it requires besides the space: what a request must name, or Ask Orama find.
     required: frozenset[str] = frozenset()
+    # How it is sent. A POST can still only read (workspace_query): `read` says what it does.
+    get: bool = True
 
 
 @dataclass
@@ -83,9 +85,14 @@ def capability_index(openapi: dict[str, Any]) -> dict[str, Capability]:
             if method not in {"get", "post"}:
                 continue
             summary = (operation.get("summary") or operation.get("description") or "").strip()
-            index[name] = Capability(name, method == "get", summary.split("\n")[0][:140],
+            # What it does is lake's x-lake-action (read | write); the method only says how to
+            # send it. Without the extension (an older lake), a GET is a read.
+            action = operation.get("x-lake-action")
+            read = action == "read" if action else method == "get"
+            index[name] = Capability(name, read, summary.split("\n")[0][:140],
                                      "customer_id" in input_fields(operation),
-                                     frozenset(required_fields(operation) - {"customer_id"}))
+                                     frozenset(required_fields(operation) - {"customer_id"}),
+                                     get=method == "get")
     return index
 
 
@@ -274,7 +281,7 @@ def handle(name: str, arguments: dict[str, Any], index: dict[str, Capability], t
         if not capability.read:
             return (f"FAILED: {capability.name} changes something; propose it with lake_propose "
                     "so the person can confirm it.")
-        body = lake.call(capability.name, payload, read=True)
+        body = lake.call(capability.name, payload, read=capability.get)
         answer.reads.append({"capability": capability.name, "input": payload,
                              "ok": bool(body.get("ok"))})
         return observation(body)

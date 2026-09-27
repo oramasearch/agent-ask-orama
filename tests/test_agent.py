@@ -23,7 +23,9 @@ OPENAPI = {"paths": {
     "/v1/identity": {"get": {"summary": "This lake's identity", "parameters": []}},
     "/v1/get_repository": {"get": {"summary": "Get a repository", "parameters": CUSTOMER + [
         {"in": "query", "name": "repository_id", "required": True}]}},
-    "/v1/workspace_query": {"get": {"summary": "Query a workspace", "parameters": CUSTOMER}},
+    # As lake serves it: a POST (its input is an object) that only reads.
+    "/v1/workspace_query": {"post": {"summary": "Query a workspace", "x-lake-action": "read",
+                                     "requestBody": body("customer_id", "capability")}},
     "/v1/create_repository": {"post": {"summary": "Create a repository",
                                        "requestBody": body("customer_id", "name")}},
     "/v1/agent_turn": {"post": {"summary": "Talk to an agent",
@@ -49,6 +51,12 @@ class FakeLake:
                 return httpx.Response(400, json={"ok": False, "error": {
                     "code": "invalid_input", "message": "unexpected field customer_id"}})
             return httpx.Response(200, json={"ok": True, "value": {"id": "taap:lake"}})
+        if request.url.path == "/v1/workspace_query":
+            if request.method != "POST":
+                return httpx.Response(405, json={"ok": False, "error": {
+                    "code": "method_not_allowed", "message": "call it with POST"}})
+            return httpx.Response(200, json={"ok": True, "value": {"datasets": [
+                {"database": "datasets", "name": "accounts", "rows": 200}]}})
         if request.url.path == "/v1/agent_turn":
             sent = json.loads(request.content)
             if sent["agent"] == "agent-project":
@@ -245,3 +253,22 @@ def test_a_subagent_still_working_when_the_budget_ends_is_reported_as_working():
     ticks = iter([0.0, 5.0, 10.0])
     followed = agent.follow(lake, "c-1", "t-1", budget=8.0, clock=lambda: next(ticks))
     assert followed["ok"] and followed["value"]["status"] == "running"
+
+
+def test_a_post_that_only_reads_is_read_not_proposed():
+    """UX review 2026-09-27: workspace_query (a POST) was taken for a change, so Ask Orama never
+    read the workspace and guessed SQL instead."""
+    index = agent.capability_index(OPENAPI)
+    assert index["workspace_query"].read and not index["workspace_query"].get
+    assert not index["create_repository"].read
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="workspace_query",
+                                 input={"capability": "list_datasets", "input": {}})]),
+        message(content="You have one dataset, accounts (200 rows)."))
+    answer = run(client, fake)
+    sent = [r for r in fake.requests if r.url.path == "/v1/workspace_query"]
+    assert sent and sent[0].method == "POST"
+    assert json.loads(sent[0].content)["capability"] == "list_datasets"
+    assert answer.reads == [{"capability": "workspace_query", "input": {
+        "customer_id": "c-1", "capability": "list_datasets", "input": {}}, "ok": True}]
