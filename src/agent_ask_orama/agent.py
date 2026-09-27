@@ -23,7 +23,7 @@ from typing import Any
 import httpx
 from openai import OpenAI
 
-PROMPT_VERSION = "v2"
+PROMPT_VERSION = "v3"
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_ROUNDS = 10
 
