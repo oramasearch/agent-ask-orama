@@ -15,6 +15,7 @@ name one that does not exist, and lake refuses anything the person may not do.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -223,6 +224,31 @@ def answer_turn(turn: Turn, history: list[dict[str, Any]], client: OpenAI, model
             lake.close()
 
 
+FOLLOW_SECONDS = 240.0
+
+
+def follow(lake: Lake, customer_id: str, task_id: str, budget: float = FOLLOW_SECONDS,
+           clock=time.monotonic) -> dict[str, Any]:
+    """A delegated task, followed with receive_agent_events until it finishes or the budget ends.
+
+    Answers the envelope with the task as it stands: finished, with the subagent's answer, or still
+    working (then the person is told it is, and where to follow it).
+    """
+    deadline = clock() + budget
+    sequence = 1
+    while True:
+        body = lake.call("receive_agent_events", {"customer_id": customer_id, "task_id": task_id,
+                                                  "from_sequence": sequence, "wait_ms": 10000},
+                         read=True)
+        if not body.get("ok"):
+            return body
+        value = body.get("value") or {}
+        sequence = int(value.get("next_sequence") or sequence)
+        task = value.get("task") or {}
+        if task.get("status") in ("succeeded", "failed") or clock() >= deadline:
+            return {"ok": True, "value": task}
+
+
 def handle(name: str, arguments: dict[str, Any], index: dict[str, Capability], turn: Turn,
            lake: Lake, answer: Answer) -> str:
     """One tool call. Reads run; proposals are recorded, never run; delegation goes through lake."""
@@ -231,6 +257,10 @@ def handle(name: str, arguments: dict[str, Any], index: dict[str, Capability], t
         body = lake.call("agent_turn", {"customer_id": turn.customer_id, "agent": agent,
                                         "message": request,
                                         "context": arguments.get("context") or {}}, read=False)
+        task_id = (body.get("value") or {}).get("task_id") if body.get("ok") else None
+        if task_id:
+            # A library agent answers on lake's agent bus (lake#269): follow its task.
+            body = follow(lake, turn.customer_id, task_id)
         answer.delegations.append({"agent": agent, "request": request, "ok": bool(body.get("ok")),
                                    "answer": body.get("value") if body.get("ok") else None,
                                    "error": (body.get("error") or {}).get("message")})

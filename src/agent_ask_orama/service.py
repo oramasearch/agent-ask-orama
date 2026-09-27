@@ -18,6 +18,7 @@ from typing import Any
 
 from openai import OpenAI
 
+from agent_ask_orama import lake_bus
 from agent_ask_orama.agent import PROMPT_VERSION, Turn, answer_turn
 
 
@@ -99,5 +100,7 @@ def serve() -> int:
 
     port = int(os.environ.get("PORT", "8080"))
     print(json.dumps({"agent": "agent-ask-orama", "listening": port}), flush=True)
+    # Turns arrive as tasks on lake's agent bus (lake#269); /v1/turn stays for direct calls.
+    lake_bus.start_from_env(lambda body: run_turn(body, state), "agent-ask-orama")
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
     return 0

@@ -36,6 +36,7 @@ OPENAPI = {"paths": {
 class FakeLake:
     def __init__(self) -> None:
         self.requests: list[httpx.Request] = []
+        self.polls = 0
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -50,8 +51,20 @@ class FakeLake:
             return httpx.Response(200, json={"ok": True, "value": {"id": "taap:lake"}})
         if request.url.path == "/v1/agent_turn":
             sent = json.loads(request.content)
+            if sent["agent"] == "agent-project":
+                # A library agent: the turn is a task on lake's agent bus (lake#269).
+                return httpx.Response(200, json={"ok": True, "value": {
+                    "task_id": "t-1", "agent": "agent-project", "status": "pending"}})
             return httpx.Response(200, json={"ok": True, "value": {
                 "agent": sent["agent"], "reply": "built a churn Pipeline"}})
+        if request.url.path == "/v1/receive_agent_events":
+            self.polls += 1
+            status = "running" if self.polls < 2 else "succeeded"
+            answer = {"ok": True, "result": {"reply": "built a churn Pipeline"}}
+            return httpx.Response(200, json={"ok": True, "value": {
+                "events": [], "next_sequence": self.polls + 1,
+                "task": {"task_id": "t-1", "agent": "agent-project", "status": status,
+                         "answer": answer if status == "succeeded" else None}}})
         return httpx.Response(403, json={"ok": False, "error": {"code": "unauthorized",
                                                                 "message": "no"}})
 
@@ -142,6 +155,12 @@ def test_it_delegates_through_lake_and_reports_the_agents_answer():
     sent = json.loads(next(r for r in fake.requests if r.url.path == "/v1/agent_turn").content)
     assert sent == {"customer_id": "c-1", "agent": "agent-project", "message": "predict churn",
                     "context": {}}
+    # The subagent's task is followed on lake's agent bus until it finished.
+    polls = [r for r in fake.requests if r.url.path == "/v1/receive_agent_events"]
+    assert len(polls) == 2
+    assert polls[1].url.params["from_sequence"] == "2", "each poll continues where the last stopped"
+    assert answer.delegations[0]["answer"]["status"] == "succeeded"
+    assert answer.delegations[0]["answer"]["answer"]["result"]["reply"] == "built a churn Pipeline"
 
 
 def test_an_unknown_capability_is_an_observation():
@@ -215,3 +234,14 @@ def test_a_read_that_takes_no_space_is_sent_without_one():
     sent = next(r for r in fake.requests if r.url.path == "/v1/identity")
     assert "customer_id" not in sent.url.params
     assert answer.reads and answer.reply == "This lake is taap:lake."
+
+
+def test_a_subagent_still_working_when_the_budget_ends_is_reported_as_working():
+    fake = FakeLake()
+    fake.polls = -100  # it never finishes within this test
+    lake = agent.Lake(agent.Turn(message="m", lake_url="http://lake", lake_token="k",
+                                 customer_id="c-1", page={}, conversation_id="x"),
+                      transport=httpx.MockTransport(fake))
+    ticks = iter([0.0, 5.0, 10.0])
+    followed = agent.follow(lake, "c-1", "t-1", budget=8.0, clock=lambda: next(ticks))
+    assert followed["ok"] and followed["value"]["status"] == "running"

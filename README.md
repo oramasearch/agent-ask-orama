@@ -15,7 +15,10 @@ and calls this service for every message.
   lake shows it and runs it only when the person confirms.
 - **Delegates to any agent** (`delegate`), through lake's `agent_turn`: the Project Agent
   (`agent-project`) for Pipelines, Auto-Suggest (`agent-autosuggest`) for Opportunities, and every
-  agent the person built. An unattended agent is started by proposing `launch_agent`.
+  agent the person built. An unattended agent is started by proposing `launch_agent`. A library
+  agent answers on lake's agent bus: `agent_turn` returns a task, and Ask Orama follows it with
+  `receive_agent_events` for up to four minutes (lake#269). A subagent still working then is
+  reported as working, with its task.
 - **Its vocabulary is derived.** The capabilities it may name come from lake's `/v1/openapi.json`
   at every turn, less the ceremonies a person performs (signing in, recovering, minting keys).
 
@@ -32,6 +35,12 @@ and calls this service for every message.
 in-cluster address; `ASK_ORAMA_MODEL` the model (default `gpt-5.5`); `OPENAI_API_KEY` the general
 Orama key the operator mounts. Conversations live in memory by id. Every turn is a trace in
 `TRACE_DIR`, never with the person's key.
+
+**Turns arrive on lake's agent bus** (lake `docs/api/agent-bus.md`). `lake_bus.py` long-polls
+`receive_agent_tasks` through lake with this agent's own bus credential (`AGENT_BUS_TOKEN`). It
+claims each task, whose body carries the task's credential as `lake_token`, runs it as
+`/v1/turn` would, and publishes `progress`, then the answer or `failed`. It starts when the
+operator sets `LAKE_URL`, `AGENT_BUS_TOKEN` and `AGENT_BUS_AGENT`.
 
 ## Evals
 
