@@ -1,0 +1,168 @@
+"""Ask Orama without a network: lake is an httpx MockTransport, the model a scripted client.
+The live eval set (evals/) runs against a real lake."""
+
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+
+import httpx
+
+from agent_ask_orama import agent, service
+
+OPENAPI = {"paths": {
+    "/v1/list_repositories": {"get": {"summary": "List repositories"}},
+    "/v1/workspace_query": {"get": {"summary": "Query a workspace"}},
+    "/v1/create_repository": {"post": {"summary": "Create a repository"}},
+    "/v1/agent_turn": {"post": {"summary": "Talk to an agent"}},
+    "/v1/sign_in_password": {"post": {"summary": "Sign in"}},
+    "/v1/repositories/{id}/sync/push": {"post": {"summary": "binary"}},
+}}
+
+
+class FakeLake:
+    def __init__(self) -> None:
+        self.requests: list[httpx.Request] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if request.url.path == "/v1/openapi.json":
+            return httpx.Response(200, json=OPENAPI)
+        if request.url.path == "/v1/list_repositories":
+            return httpx.Response(200, json={"ok": True, "value": {"items": [{"name": "site"}]}})
+        if request.url.path == "/v1/agent_turn":
+            sent = json.loads(request.content)
+            return httpx.Response(200, json={"ok": True, "value": {
+                "agent": sent["agent"], "reply": "built a churn Pipeline"}})
+        return httpx.Response(403, json={"ok": False, "error": {"code": "unauthorized",
+                                                                "message": "no"}})
+
+
+def message(content=None, tool_calls=None):
+    value = SimpleNamespace(content=content, tool_calls=tool_calls)
+    value.model_dump = lambda exclude_none=True: {"role": "assistant", "content": content or ""}
+    return SimpleNamespace(choices=[SimpleNamespace(message=value)])
+
+
+def call(name, **arguments):
+    return SimpleNamespace(id=f"c-{name}", function=SimpleNamespace(
+        name=name, arguments=json.dumps(arguments)))
+
+
+class Scripted:
+    def __init__(self, *replies) -> None:
+        self.replies = list(replies)
+        self.seen: list[list] = []
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+    def _create(self, **kwargs):
+        self.seen.append(list(kwargs["messages"]))
+        return self.replies.pop(0)
+
+
+def turn(**overrides):
+    value = {"message": "hi", "lake_url": "http://lake", "lake_token": "person-key",
+             "customer_id": "c-1"}
+    value.update(overrides)
+    return agent.Turn(**value)
+
+
+def lake_for(fake):
+    return lambda t: agent.Lake(t, transport=httpx.MockTransport(fake))
+
+
+def run(client, fake, history=None, **overrides):
+    t = turn(**overrides)
+    return agent.answer_turn(t, history if history is not None else [], client, "gpt-5.5",
+                             agent.Lake(t, transport=httpx.MockTransport(fake)))
+
+
+def test_the_index_is_lakes_own_openapi_without_ceremonies():
+    index = agent.capability_index(OPENAPI)
+    assert set(index) == {"list_repositories", "workspace_query", "create_repository",
+                          "agent_turn"}
+    assert index["list_repositories"].read and not index["create_repository"].read
+
+
+def test_reads_run_as_the_person_in_their_space():
+    fake = FakeLake()
+    client = Scripted(message(tool_calls=[call("lake_read", capability="list_repositories")]),
+                      message(content="You have one repository, site."))
+    answer = run(client, fake)
+    assert answer.reply == "You have one repository, site."
+    sent = next(r for r in fake.requests if r.url.path == "/v1/list_repositories")
+    assert sent.headers["Authorization"] == "Bearer person-key"
+    assert sent.url.params["customer_id"] == "c-1"
+    assert "list_repositories" in client.seen[0][0]["content"], "the index is in the prompt"
+
+
+def test_a_change_is_proposed_never_executed():
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[call("lake_propose", capability="create_repository",
+                                 input={"name": "notes"}, impact="Creates a repository notes")]),
+        message(tool_calls=[call("lake_read", capability="create_repository", input={})]),
+        message(content="I have proposed creating notes; confirm it to go ahead."))
+    answer = run(client, fake)
+    assert answer.proposals == [{"capability": "create_repository",
+                                 "input": {"name": "notes", "customer_id": "c-1"},
+                                 "impact": "Creates a repository notes"}]
+    assert not any(r.method == "POST" and r.url.path == "/v1/create_repository"
+                   for r in fake.requests), "nothing writes without the person's confirmation"
+
+
+def test_it_delegates_through_lake_and_reports_the_agents_answer():
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[call("delegate", agent="agent-project", request="predict churn")]),
+        message(content="The Project Agent built a churn Pipeline."))
+    answer = run(client, fake)
+    assert answer.delegations[0]["agent"] == "agent-project"
+    assert answer.delegations[0]["ok"]
+    sent = json.loads(next(r for r in fake.requests if r.url.path == "/v1/agent_turn").content)
+    assert sent == {"customer_id": "c-1", "agent": "agent-project", "message": "predict churn",
+                    "context": {}}
+
+
+def test_an_unknown_capability_is_an_observation():
+    fake = FakeLake()
+    client = Scripted(message(tool_calls=[call("lake_read", capability="drop_database")]),
+                      message(content="That is not something lake can do."))
+    run(client, fake)
+    tool_reply = client.seen[1][-1]
+    assert tool_reply["role"] == "tool" and "not a lake capability" in tool_reply["content"]
+
+
+def test_a_service_turn_needs_the_persons_key_and_keeps_the_conversation(tmp_path):
+    state = service.State()
+    state.trace_dir = tmp_path
+    refused = service.run_turn({"message": "hi"}, state)
+    assert not refused["ok"]
+    fake = FakeLake()
+    body = {"message": "hi", "lake_token": "person-key", "lake_url": "http://lake",
+            "conversation_id": "conv-1"}
+    first = service.run_turn(body, state, Scripted(message(content="Hello.")),
+                             agent.Lake(turn(), transport=httpx.MockTransport(fake)))
+    second = service.run_turn({**body, "message": "again"}, state,
+                              Scripted(message(content="Hello again.")),
+                              agent.Lake(turn(), transport=httpx.MockTransport(fake)))
+    assert first["ok"] and second["ok"]
+    assert len(state.history("conv-1")) == 5, "system, two people's turns, two replies"
+    trace = (tmp_path / f"{second['trace_id']}.json").read_text()
+    assert "person-key" not in trace
+
+
+def test_evals_are_generated_from_the_index_and_graded_by_rules():
+    from agent_ask_orama import evals
+    index = agent.capability_index(OPENAPI)
+    cases = evals.generate(index, changes=2, reads=2)
+    kinds = {case.kind for case in cases}
+    assert kinds == {"change", "read", "delegate"}
+    change = next(case for case in cases if case.kind == "change")
+    good = {"reply": "", "reads": [], "delegations": [],
+            "proposals": [{"capability": change.expect, "input": {}, "impact": ""}]}
+    assert evals.grade(change, good, index, []).passed
+    assert not evals.grade(change, good, index, ["/v1/" + change.expect]).passed, \
+        "a write sent without confirmation fails the case"
+    invented = {**good, "proposals": [{"capability": "invented_thing", "input": {}, "impact": ""}]}
+    assert not evals.grade(change, invented, index, []).passed
