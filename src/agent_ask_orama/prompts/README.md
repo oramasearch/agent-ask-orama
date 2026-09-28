@@ -3,6 +3,9 @@
 Each prompt behavior change creates a new version; previous versions remain for trace history.
 `agent.py` selects the active version through `PROMPT_VERSION`.
 
+- `v6.md` adds a fresh solution-registry read for every solution turn, current `get_solution`
+  details, honest preview and sketch language, policy and evidence reads, proposal-only policy
+  changes, and the older-engine fallback to methodologies.
 - `v5.md` reads the live methodology registry, declines unsupported Pipeline work with its issue,
   explains graph `methodology` / `runnable` fields, and uses the M-1-only older-engine fallback.
 - `v4.md` knows the three corpus generators it can bring into a turn.

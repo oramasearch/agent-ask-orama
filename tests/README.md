@@ -2,7 +2,10 @@
 
 `test_agent.py` uses an `httpx` fake lake and a scripted model client. Its methodology coverage
 includes a runnable M-3 proposal, an M-14 proposal declined with `zetta#1053`, the M-1-only fallback
-for an older engine, and deterministic grading of the segmentation and speech eval cases.
+for an older engine, and deterministic grading of the segmentation and speech eval cases. Its
+solution coverage includes a runnable entry, a preview with missing production components, a
+refused sketch, an older engine, policy and evidence reads, an unavailable operation, a policy
+proposal that is never sent, and deterministic solution eval grading.
 
 `test_lake_bus.py` covers task receipt and result publication on lake's agent bus.
 

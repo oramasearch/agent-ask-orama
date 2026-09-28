@@ -23,10 +23,27 @@ from typing import Any
 import httpx
 from openai import OpenAI
 
-PROMPT_VERSION = "v5"
+PROMPT_VERSION = "v6"
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_ROUNDS = 10
 OLD_ENGINE_ISSUE = "zetta#1061"
+
+SOLUTION_READ_CAPABILITIES = frozenset({
+    "get_solution",
+    "get_policy",
+    "get_experiment",
+    "list_ledger",
+    "get_monitor",
+    "get_roi_readout",
+})
+SOLUTION_ACTION_CAPABILITIES = frozenset({
+    "create_solution",
+    "run_solution",
+    "create_policy",
+    "update_policy",
+    "decide",
+    "approve_decision",
+})
 
 # Never offered, whatever the OpenAPI lists: signing in, recovering accounts and minting
 # credentials are ceremonies a person performs, not something an agent proposes.
@@ -143,6 +160,89 @@ class MethodologyCatalog:
         return unsupported(methodology, name, issue)
 
 
+@dataclass
+class SolutionCatalog:
+    """The solution registry observed during this turn."""
+
+    solutions: dict[str, dict[str, Any]] = field(default_factory=dict)
+    loaded: bool = False
+    old_engine: bool = False
+
+    def observe(self, payload: dict[str, Any], body: dict[str, Any]) -> bool:
+        """Record a list_solutions result and return whether this was that read."""
+        if payload.get("capability") != "list_solutions":
+            return False
+        error = body.get("error") or {}
+        if not body.get("ok") and error.get("code") == "unknown_capability":
+            self.solutions = {}
+            self.loaded = True
+            self.old_engine = True
+            return True
+        value = body.get("value") or {}
+        items = value.get("solutions") if isinstance(value, dict) else None
+        if body.get("ok") and isinstance(items, list):
+            self.solutions = {
+                item["id"]: item
+                for item in items
+                if isinstance(item, dict) and isinstance(item.get("id"), str)
+            }
+            self.loaded = True
+            self.old_engine = False
+        return True
+
+    def fallback_observation(self) -> str:
+        return json.dumps({
+            "solutions": [],
+            "compatibility": (
+                "This workspace engine predates list_solutions. Solution catalogue, policy, "
+                "ledger, monitor, and measured readout operations are not deployed yet. "
+                "Methodology support may still be available through list_methodologies."
+            ),
+        })
+
+    def refusal(self, solution: str, level: Any) -> str | None:
+        """Explain why a solution creation proposal is invalid, or allow it."""
+        required = self.required()
+        if required:
+            return required
+        item = self.solutions.get(solution)
+        if item is None:
+            return f"FAILED: not_supported {solution} is not in this engine's solution registry."
+        if item.get("status") == "sketch":
+            name = str(item.get("name") or solution)
+            condition = str(item.get("promotion_condition") or "its promotion condition")
+            issue = str(item.get("issue") or "")
+            return solution_unsupported(solution, name, condition, issue)
+        levels = item.get("levels") or item.get("capability_levels") or []
+        declared = {
+            entry.get("level") if isinstance(entry, dict) else entry
+            for entry in levels
+        }
+        if level not in declared:
+            available = ", ".join(str(value) for value in sorted(
+                value for value in declared if isinstance(value, int)
+            ))
+            return (
+                f"FAILED: not_supported level {level} is not declared for {solution}. "
+                f"Available levels: {available or 'none'}."
+            )
+        return None
+
+    def required(self) -> str | None:
+        """Require this turn's registry before a solution operation."""
+        if not self.loaded:
+            return (
+                "FAILED: solution_registry_required Read workspace_query list_solutions at the "
+                "start of this turn before a solution operation."
+            )
+        if self.old_engine:
+            return (
+                "FAILED: not_supported This workspace engine has no solution registry. "
+                "Solution operations are not deployed yet; use methodologies only."
+            )
+        return None
+
+
 def issue_url(issue: str) -> str:
     if issue.startswith("zetta#") and issue.removeprefix("zetta#").isdigit():
         return "https://github.com/oramasearch/zetta/issues/" + issue.removeprefix("zetta#")
@@ -157,6 +257,30 @@ def unsupported(methodology: str, name: str, issue: str) -> str:
     if not issue:
         issue_text = ""
     return f"FAILED: not_supported {name} ({methodology}) is not supported yet{issue_text}."
+
+
+def solution_unsupported(solution: str, name: str, condition: str, issue: str) -> str:
+    issue_text = f" Tracked by {issue}." if issue else ""
+    url = issue_url(issue)
+    if url:
+        issue_text = f" Tracked by {issue} ({url})."
+    return (
+        f"FAILED: not_supported {name} ({solution}) is a sketch and cannot be created. "
+        f"Promotion condition: {condition}.{issue_text}"
+    )
+
+
+def solution_creation(payload: dict[str, Any]) -> tuple[str, Any] | None:
+    """Return a nested create_solution request's identifier and level."""
+    if payload.get("capability") != "create_solution":
+        return None
+    arguments = payload.get("input") or {}
+    if not isinstance(arguments, dict):
+        return None
+    solution = arguments.get("solution")
+    if not isinstance(solution, str) or not solution:
+        return None
+    return solution, arguments.get("level")
 
 
 def named_methodologies(value: Any) -> list[str]:
@@ -305,6 +429,7 @@ def answer_turn(turn: Turn, history: list[dict[str, Any]], client: OpenAI, model
     lake = lake or Lake(turn)
     answer = Answer()
     methodologies = MethodologyCatalog()
+    solutions = SolutionCatalog()
     try:
         index = capability_index(lake.openapi())
         if not history:
@@ -326,7 +451,7 @@ def answer_turn(turn: Turn, history: list[dict[str, Any]], client: OpenAI, model
                 except json.JSONDecodeError:
                     arguments = {}
                 content = handle(call.function.name, arguments, index, turn, lake, answer,
-                                 methodologies)
+                                 methodologies, solutions)
                 history.append({"role": "tool", "tool_call_id": call.id, "content": content})
         answer.reply = "I stopped before finishing: this turn reached its limit of tool rounds."
         return answer
@@ -361,7 +486,8 @@ def follow(lake: Lake, customer_id: str, task_id: str, budget: float = FOLLOW_SE
 
 
 def handle(name: str, arguments: dict[str, Any], index: dict[str, Capability], turn: Turn,
-           lake: Lake, answer: Answer, methodologies: MethodologyCatalog) -> str:
+           lake: Lake, answer: Answer, methodologies: MethodologyCatalog,
+           solutions: SolutionCatalog) -> str:
     """One tool call. Reads run; proposals are recorded, never run; delegation goes through lake."""
     if name == "delegate":
         agent, request = arguments.get("agent", ""), arguments.get("request", "")
@@ -385,6 +511,15 @@ def handle(name: str, arguments: dict[str, Any], index: dict[str, Capability], t
         if not capability.read:
             return (f"FAILED: {capability.name} changes something; propose it with lake_propose "
                     "so the person can confirm it.")
+        workspace_operation = (
+            payload.get("capability")
+            if capability.name == "workspace_query"
+            else None
+        )
+        if workspace_operation in SOLUTION_READ_CAPABILITIES:
+            refusal = solutions.required()
+            if refusal:
+                return refusal
         body = lake.call(capability.name, payload, read=capability.get)
         answer.reads.append({"capability": capability.name, "input": payload,
                              "ok": bool(body.get("ok"))})
@@ -392,12 +527,29 @@ def handle(name: str, arguments: dict[str, Any], index: dict[str, Capability], t
             payload, body)
         if methodology_read and methodologies.old_engine:
             return methodologies.fallback_observation()
+        solution_read = capability.name == "workspace_query" and solutions.observe(payload, body)
+        if solution_read and solutions.old_engine:
+            return solutions.fallback_observation()
         return observation(body)
     if name == "lake_propose":
         if capability.read:
             return f"{capability.name} only reads; call it with lake_read instead."
+        workspace_operation = (
+            payload.get("capability")
+            if capability.name == "workspace_act"
+            else None
+        )
+        if workspace_operation in SOLUTION_ACTION_CAPABILITIES:
+            refusal = solutions.required()
+            if refusal:
+                return refusal
         for methodology in named_methodologies(payload):
             refusal = methodologies.refusal(methodology)
+            if refusal:
+                return refusal
+        creation = solution_creation(payload)
+        if creation is not None:
+            refusal = solutions.refusal(*creation)
             if refusal:
                 return refusal
         proposal = {"capability": capability.name, "input": payload,
