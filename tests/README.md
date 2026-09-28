@@ -8,6 +8,9 @@ refused sketch, an older engine, policy and evidence reads, an unavailable opera
 proposal that is never sent, and deterministic solution eval grading. Its App coverage includes
 lists, current health with retained events, build-failure diagnosis, ApplicationAgent delegation
 with kind `app`, proposal-only actions and deterministic App eval grading.
+Its experiment coverage routes train, tune and best-model requests to `experiment`, progress to
+`experiment_status`, and divergence questions to `experiment_explain`; it also proves Ask Orama
+cannot forward confirmed proposal or promotion objects and grades the fixed experiment evals.
 
 `test_lake_bus.py` covers task receipt and result publication on lake's agent bus.
 

@@ -15,16 +15,21 @@ and calls this service for every message.
   lake shows it and runs it only when the person confirms.
 - **Delegates to any agent** (`delegate`), through lake's `agent_turn`: the Project Agent
   (`agent-project`) for Pipelines, ApplicationAgent (`agent-application`, kind `app`) for Apps,
-  Auto-Suggest (`agent-autosuggest`) for Opportunities, and every agent the person built. An
-  unattended agent is started by proposing `launch_agent`. A library agent answers on lake's agent
-  bus: `agent_turn` returns a task, and Ask Orama follows it with `receive_agent_events` for up to
-  four minutes (lake#269). A subagent still working then is reported as working, with its task.
+  ExperimentsAgent (`agent-experiments`) for training studies, Auto-Suggest (`agent-autosuggest`)
+  for Opportunities, and every agent the person built. An unattended agent is started by proposing
+  `launch_agent`. A library agent answers on lake's agent bus: `agent_turn` returns a task, and Ask
+  Orama follows it with `receive_agent_events` for up to four minutes (lake#269). A subagent still
+  working then is reported as working, with its task.
 - **Its vocabulary is derived.** The capabilities it may name come from lake's `/v1/openapi.json`
   at every turn, less the ceremonies a person performs (signing in, recovering, minting keys).
 - **It knows Apps and builds.** It reads App desired and observed state plus retained App events,
   and reads build rows plus retained build events to explain failures. Building or changing an App
   goes to ApplicationAgent. Deploys, rebuilds, rollbacks, scaling and every other App action remain
   proposals until the person confirms them.
+- **It delegates training experiments.** Train, tune and best-model requests go to ExperimentsAgent
+  as `experiment` turns; progress uses `experiment_status`; results and divergence explanations use
+  `experiment_explain`. Ask Orama summarizes the returned proposal or result. It cannot forward a
+  confirmed proposal or promotion; lake does that only after the person reviews and confirms it.
 - **It knows the current solution catalogue.** On every solution turn it reads `list_solutions`,
   uses `get_solution` for the selected entry, reports missing production foundations and sketches
   honestly, and reads a solution Project's policy, holdout, ledger, monitor and measured readout.
@@ -61,14 +66,16 @@ operator sets `LAKE_URL`, `AGENT_BUS_TOKEN` and `AGENT_BUS_AGENT`.
 changes and reads, requests missing an input, plus delegations) and grades each by rule: a change
 must be **proposed** with **no write sent**, a read must be called, a request that needs an id it
 does not give must be answered with a question or a lookup first (never a guessed value), a Pipeline
-request must reach `agent-project`, an opportunity request `agent-autosuggest`, and an App request
-`agent-application` with kind `app`; nothing may name a capability lake does not have. Fixed App
-cases require the App list, current state with events, and the last build with build events. Fixed
-methodology cases ask whether customer segmentation and speech analytics run; they are graded
-against the live registry, including the tracking issue when support is absent. Fixed solution
-cases grade S-1 and B-1 against the live catalogue, and a measured-readout case requires
-`get_roi_readout` after `list_solutions`. Change and read cases sample only capabilities whose
-required inputs are the space alone, so they can be done as asked.
+request must reach `agent-project`, an opportunity request `agent-autosuggest`, an App request
+`agent-application` with kind `app`, and a training experiment request `agent-experiments` with the
+matching turn kind; nothing may name a capability lake does not have. Fixed App cases require the
+App list, current state with events, and the last build with build events. Fixed experiment cases
+cover train, tune, best-model, progress and divergence requests. Fixed methodology cases ask
+whether customer segmentation and speech analytics run; they are graded against the live registry,
+including the tracking issue when support is absent. Fixed solution cases grade S-1 and B-1
+against the live catalogue, and a measured-readout case requires `get_roi_readout` after
+`list_solutions`. Change and read cases sample only capabilities whose required inputs are the
+space alone, so they can be done as asked.
 
 ```sh
 LAKE_URL=https://lake.oramadev.net LAKE_TOKEN=<a person's token> CUSTOMER_ID=<their space> \
@@ -92,14 +99,16 @@ buildctl --addr "kube-pod://<buildkit pod>?context=orama-production-cluster-01&n
 `uv run pytest`: the index without ceremonies, reads as the person in their space, a change that is
 proposed and never sent, methodology registry enforcement and the old-engine fallback, delegation
 through lake, App and build reads with retained events, ApplicationAgent app turns, proposal-only
-App actions, solution catalogue and policy/readout behavior, solution and policy proposals that
-are never sent, unknown capabilities as observations, the service's conversation and a trace
-without the key, and the eval grader.
+App actions, ExperimentsAgent routing and confirmation isolation, solution catalogue and
+policy/readout behavior, solution and policy proposals that are never sent, unknown capabilities
+as observations, the service's conversation and a trace without the key, and the eval grader.
 
 ## Documentation
 
 - [`docs/apps/`](docs/apps/) — App and build reads, event-stream diagnosis, ApplicationAgent
   delegation and proposal-only actions.
+- [`docs/experiments/`](docs/experiments/) — ExperimentsAgent turn routing, proposal/result
+  summaries and the confirmation boundary.
 - [`docs/methodologies/`](docs/methodologies/) — registry reads, proposal enforcement, graph
   explanations and old-engine behavior.
 - [`docs/solutions/`](docs/solutions/) — catalogue reads, preview and sketch behavior, policy and

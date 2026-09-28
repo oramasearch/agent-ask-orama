@@ -55,9 +55,19 @@ OPENAPI = {"paths": {
     "/v1/agent_turn": {"post": {"summary": "Talk to an agent",
                                 "requestBody": body("customer_id", "agent", "kind", "message",
                                                     "context")}},
+    "/v1/receive_agent_events": {"get": {"summary": "Receive agent events",
+                                              "parameters": CUSTOMER + [
+        {"in": "query", "name": "task_id", "required": True}]}},
     "/v1/sign_in_password": {"post": {"summary": "Sign in"}},
     "/v1/repositories/{id}/sync/push": {"post": {"summary": "binary"}},
 }}
+
+# Lake requires REST/OpenAPI and MCP tools/list parity. This is the fake tools/list projection.
+LAKE_MCP_TOOLS = frozenset(
+    path.removeprefix("/v1/")
+    for path in OPENAPI["paths"]
+    if path.startswith("/v1/") and "{" not in path
+)
 
 METHODOLOGIES = [
     {"id": "M-1", "name": "Tabular supervised", "runnable": True, "partial": False,
@@ -231,21 +241,53 @@ class FakeLake:
                 {"database": "datasets", "name": "accounts", "rows": 200}]}})
         if request.url.path == "/v1/agent_turn":
             sent = json.loads(request.content)
-            if sent["agent"] in {"agent-project", "agent-application"}:
+            if sent["agent"] in {"agent-project", "agent-application", "agent-experiments"}:
                 # A library agent: the turn is a task on lake's agent bus (lake#269).
+                task_ids = {
+                    "app": "t-app",
+                    "experiment": "t-experiment",
+                    "experiment_status": "t-experiment-status",
+                    "experiment_explain": "t-experiment-explain",
+                }
+                task_id = task_ids.get(sent.get("kind"), "t-1")
                 return httpx.Response(200, json={"ok": True, "value": {
-                    "task_id": "t-app" if sent["agent"] == "agent-application" else "t-1",
-                    "agent": sent["agent"], "status": "pending"}})
+                    "task_id": task_id, "agent": sent["agent"], "status": "pending"}})
             return httpx.Response(200, json={"ok": True, "value": {
                 "agent": sent["agent"], "reply": "built a churn Pipeline"}})
         if request.url.path == "/v1/receive_agent_events":
             self.polls += 1
             status = "running" if self.polls < 2 else "succeeded"
             task_id = request.url.params["task_id"]
-            app_task = task_id == "t-app"
-            agent_name = "agent-application" if app_task else "agent-project"
-            reply = "proposed the risk console App" if app_task else "built a churn Pipeline"
-            answer = {"ok": True, "result": {"reply": reply}}
+            results = {
+                "t-app": ("agent-application", {
+                    "reply": "proposed the risk console App",
+                }),
+                "t-experiment": ("agent-experiments", {
+                    "kind": "proposal",
+                    "confirm": True,
+                    "proposal": {
+                        "objective": "minimize validation loss",
+                        "search_space": ["learning_rate", "max_depth"],
+                        "budgets": {"max_trials": 12},
+                    },
+                }),
+                "t-experiment-status": ("agent-experiments", {
+                    "kind": "status",
+                    "study": "study-7",
+                    "completed_trials": 4,
+                    "budget_trials": 12,
+                }),
+                "t-experiment-explain": ("agent-experiments", {
+                    "kind": "explanation",
+                    "run": "run-4",
+                    "cause": "gradient norm became non-finite",
+                }),
+            }
+            agent_name, result = results.get(task_id, (
+                "agent-project",
+                {"reply": "built a churn Pipeline"},
+            ))
+            answer = {"ok": True, "result": result}
             return httpx.Response(200, json={"ok": True, "value": {
                 "events": [], "next_sequence": self.polls + 1,
                 "task": {"task_id": task_id, "agent": agent_name, "status": status,
@@ -300,6 +342,7 @@ def test_the_index_is_lakes_own_openapi_without_ceremonies():
         "receive_app_events", "list_builds", "get_build", "receive_build_events",
         "workspace_query", "workspace_act", "create_repository", "create_app", "deploy_app",
         "build_app", "rollback_app", "scale_app", "agent_turn",
+        "receive_agent_events",
     }
     assert index["get_repository"].required == {"repository_id"}
     assert not index["list_repositories"].required, "the space is not a required input"
@@ -358,7 +401,7 @@ def test_apps_are_listed_from_lake():
         message(tool_calls=[call("lake_read", capability="list_apps")]),
         message(content="You have one App, risk-console, and it is running."))
     answer = run(client, fake, message="What Apps do I have?")
-    assert "prompt v7" in client.seen[0][0]["content"]
+    assert "prompt v8" in client.seen[0][0]["content"]
     assert answer.reads == [{
         "capability": "list_apps",
         "input": {"customer_id": "c-1"},
@@ -436,6 +479,114 @@ def test_app_work_is_an_app_turn_followed_through_lake():
     assert "has not been created" in answer.reply
 
 
+def test_experiment_requests_use_the_registered_turn_kinds_and_summarize_results():
+    cases = [
+        (
+            "Train a model on accounts.",
+            "experiment",
+            {"dataset": "accounts"},
+            "ExperimentsAgent proposed minimizing validation loss over learning rate and max "
+            "depth with a 12-trial budget. Review and confirm it in lake; no study has started.",
+        ),
+        (
+            "Tune my churn model.",
+            "experiment",
+            {"project": "retention"},
+            "ExperimentsAgent proposed a 12-trial tuning study. Review and confirm it in lake; "
+            "no study has started.",
+        ),
+        (
+            "Find the best model for retention.",
+            "experiment",
+            {"project": "retention"},
+            "ExperimentsAgent proposed a best-model search with a 12-trial budget. Review and "
+            "confirm it in lake; no study has started.",
+        ),
+        (
+            "How is study-7 progressing?",
+            "experiment_status",
+            {"study": "study-7"},
+            "ExperimentsAgent reports study-7 has completed 4 of its 12 budgeted trials.",
+        ),
+        (
+            "Why did run-4 diverge?",
+            "experiment_explain",
+            {"run": "run-4"},
+            "ExperimentsAgent reports run-4 diverged because its gradient norm became non-finite.",
+        ),
+    ]
+    for user_message, turn_kind, context, summary in cases:
+        fake = FakeLake()
+        client = Scripted(
+            message(tool_calls=[call(
+                "delegate",
+                agent="agent-experiments",
+                kind=turn_kind,
+                request=user_message,
+                context=context,
+            )]),
+            message(content=summary),
+        )
+        answer = run(client, fake, message=user_message)
+        sent = json.loads(next(
+            request.content
+            for request in fake.requests
+            if request.url.path == "/v1/agent_turn"
+        ))
+        assert sent == {
+            "customer_id": "c-1",
+            "agent": "agent-experiments",
+            "message": user_message,
+            "context": context,
+            "kind": turn_kind,
+        }
+        assert answer.delegations[0]["kind"] == turn_kind
+        assert answer.delegations[0]["answer"]["status"] == "succeeded"
+        assert answer.reply == summary
+        experiment_calls = {
+            request.url.path.removeprefix("/v1/")
+            for request in fake.requests
+            if request.url.path in {"/v1/agent_turn", "/v1/receive_agent_events"}
+        }
+        assert experiment_calls <= LAKE_MCP_TOOLS
+        assert not any(request.url.path == "/v1/start_study" for request in fake.requests)
+
+
+def test_experiments_agent_requires_a_registered_turn_kind():
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[call(
+            "delegate",
+            agent="agent-experiments",
+            request="Train a model.",
+        )]),
+        message(content="I need to route that as an experiment turn."),
+    )
+    answer = run(client, fake, message="Train a model.")
+    assert not answer.delegations
+    assert not any(request.url.path == "/v1/agent_turn" for request in fake.requests)
+    assert "requires one of these turn kinds" in client.seen[1][-1]["content"]
+
+
+def test_ask_orama_cannot_forward_experiment_confirmation_objects():
+    for field in ("confirmed_proposal", "confirmed_promotion"):
+        fake = FakeLake()
+        client = Scripted(
+            message(tool_calls=[call(
+                "delegate",
+                agent="agent-experiments",
+                kind="experiment",
+                request="Apply the reviewed experiment change.",
+                context={field: {"name": "retention tuning"}},
+            )]),
+            message(content="Confirm it in lake; I cannot apply it from chat."),
+        )
+        answer = run(client, fake, message="Yes, apply it.")
+        assert not answer.delegations
+        assert not any(request.url.path == "/v1/agent_turn" for request in fake.requests)
+        assert "confirmation_owned_by_lake" in client.seen[1][-1]["content"]
+
+
 def test_app_actions_are_proposed_and_never_sent():
     actions = [
         ("create_app", {"name": "risk-console"}),
@@ -497,6 +648,9 @@ def test_evals_are_generated_from_the_index_and_graded_by_rules():
         "read",
         "clarify",
         "delegate",
+        "experiment",
+        "experiment_status",
+        "experiment_explain",
         "app_list",
         "app_health",
         "build_failure",
@@ -553,6 +707,33 @@ def test_evals_are_generated_from_the_index_and_graded_by_rules():
     assert evals.grade(app_delegate, delegated, index, []).passed
     wrong_kind = {**nothing, "delegations": [{"agent": "agent-application", "kind": None}]}
     assert not evals.grade(app_delegate, wrong_kind, index, []).passed
+
+    experiment_cases = [
+        case
+        for case in cases
+        if case.kind in {"experiment", "experiment_status", "experiment_explain"}
+    ]
+    replies = {
+        "experiment": "ExperimentsAgent proposed a study; review and confirm it in lake.",
+        "experiment_status": "Study study-7 has completed four trials within its budget.",
+        "experiment_explain": "Run run-4 diverged after its gradient norm became non-finite.",
+    }
+    for experiment_case in experiment_cases:
+        delegated = {
+            **nothing,
+            "reply": replies[experiment_case.kind],
+            "delegations": [{
+                "agent": "agent-experiments",
+                "kind": experiment_case.kind,
+            }],
+        }
+        assert evals.grade(experiment_case, delegated, index, []).passed
+        wrong_kind = {
+            **delegated,
+            "delegations": [{"agent": "agent-experiments", "kind": "experiment"}],
+        }
+        if experiment_case.kind != "experiment":
+            assert not evals.grade(experiment_case, wrong_kind, index, []).passed
 
     catalog = agent.MethodologyCatalog(
         methodologies={item["id"]: item for item in METHODOLOGIES},
@@ -653,7 +834,7 @@ def test_a_runnable_methodology_can_be_proposed_after_reading_the_registry():
             impact="Recompiles segments as an M-3 Pipeline")]),
         message(content="I proposed the runnable M-3 segmentation Pipeline."))
     answer = run(client, fake, message="Can you segment my customers?")
-    assert "prompt v7" in client.seen[0][0]["content"]
+    assert "prompt v8" in client.seen[0][0]["content"]
     assert answer.proposals == [{
         "capability": "workspace_act",
         "input": {
@@ -716,7 +897,7 @@ def test_a_runnable_solution_is_read_from_the_registry_and_proposed():
             impact="Builds the S-1 level 1 Pipeline in retention")]),
         message(content="I proposed the S-1 level 1 Pipeline for your confirmation."))
     answer = run(client, fake, message="Build S-1 level 1 in retention from customers.")
-    assert "prompt v7" in client.seen[0][0]["content"]
+    assert "prompt v8" in client.seen[0][0]["content"]
     detail = client.seen[2][-1]["content"]
     assert "Customer retention" in detail
     assert "minimum_level" in detail
