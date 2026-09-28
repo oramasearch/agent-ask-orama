@@ -9,6 +9,8 @@ and `docs/agents/scaffold.md` first; the org rules in `oramasearch/orama-bridge`
   directly is a defect, whatever it would save.
 - **Delegation goes through lake** (`agent_turn`), never to another agent's pod.
 - **The vocabulary is derived** from lake's OpenAPI at every turn; never hand-write a capability list.
+- **App and build facts are live.** Read App and build state with their retained events. Building
+  or changing an App goes to `agent-application` as an `app` turn. App actions stay proposals.
 - **Solution facts are live.** Read `list_solutions` on every solution turn, then `get_solution` or
   the Project's policy, experiment, ledger, monitor and measured readout. Propose policy changes;
   never apply them. Never promise returns, prices or odds.

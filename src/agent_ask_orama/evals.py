@@ -11,7 +11,10 @@ Graded deterministically, never by a judge:
   capability with a value it did not find (change and read cases only sample capabilities whose
   required inputs are the space alone, so they can be done as asked);
 - a **Pipeline** request must delegate to `agent-project`, an **opportunity** request to
-  `agent-autosuggest`;
+  `agent-autosuggest`, and an **App** request to `agent-application` with kind `app`;
+- an **App list** request must call `list_apps`;
+- an **App health** request must call `get_app` and `receive_app_events`;
+- a **build failure** request must call `list_builds`, `get_build`, and `receive_build_events`;
 - a **methodology** question must read `list_methodologies`, affirm runnable support, or decline
   unsupported work with its issue;
 - a **solution** question must read `list_solutions` and describe the current entry honestly;
@@ -58,6 +61,8 @@ DELEGATIONS = [
     ("agent-project", "Change my churn Pipeline so it holds out the last month of data."),
     ("agent-autosuggest", "What could I build from the data in this workspace?"),
     ("agent-autosuggest", "Which opportunities does my data support? Rank them."),
+    ("agent-application", "Build me an App that shows the highest-risk accounts."),
+    ("agent-application", "Change App app-1 to show account risk drivers."),
 ]
 
 METHODOLOGY_QUESTIONS = [
@@ -74,7 +79,8 @@ SOLUTION_QUESTIONS = [
 @dataclass
 class Case:
     id: str
-    kind: str       # change | read | clarify | delegate | methodology | solution | solution_readout
+    # change | read | clarify | delegate | app_* | build_failure | methodology | solution
+    kind: str
     message: str
     expect: str     # the capability, or the agent key
 
@@ -113,6 +119,12 @@ def generate(index: dict[str, Capability], changes: int = 8, reads: int = 6,
         cases.append(Case(f"clarify-{name}", "clarify", f"Please {asked(name)}.", name))
     for number, (agent, message) in enumerate(DELEGATIONS):
         cases.append(Case(f"delegate-{agent}-{number}", "delegate", message, agent))
+    cases.extend([
+        Case("apps-list", "app_list", "What Apps do I have?", "list_apps"),
+        Case("app-health", "app_health", "Is App app-1 healthy?", "app-1"),
+        Case("build-last-failure", "build_failure",
+             "Why did the last build for App app-1 fail?", "app-1"),
+    ])
     for methodology, message in METHODOLOGY_QUESTIONS:
         cases.append(Case(f"methodology-{methodology.lower()}", "methodology", message,
                           methodology))
@@ -151,8 +163,17 @@ def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
         if not used and "?" not in answer["reply"]:
             reasons.append(f"neither asked for {sorted(index[case.expect].required)} nor found it")
     elif case.kind == "delegate":
-        if case.expect not in [d["agent"] for d in answer["delegations"]]:
+        matching = [d for d in answer["delegations"] if d["agent"] == case.expect]
+        if not matching:
             reasons.append(f"did not delegate to {case.expect}")
+        elif case.expect == "agent-application" and matching[0].get("kind") != "app":
+            reasons.append("did not delegate ApplicationAgent work with kind app")
+    elif case.kind == "app_list":
+        require_reads(answer, ["list_apps"], reasons)
+    elif case.kind == "app_health":
+        require_reads(answer, ["get_app", "receive_app_events"], reasons)
+    elif case.kind == "build_failure":
+        require_reads(answer, ["list_builds", "get_build", "receive_build_events"], reasons)
     elif case.kind == "methodology":
         methodology_read = any(
             read.get("capability") == "workspace_query"
@@ -208,6 +229,14 @@ def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
         else:
             grade_solution_answer(case, answer["reply"], solutions, reasons)
     return Graded(case, not reasons, reasons, answer)
+
+
+def require_reads(answer: dict[str, Any], expected: list[str], reasons: list[str]) -> None:
+    """Require the named lake reads in a fixed behavior case."""
+    called = {read.get("capability") for read in answer["reads"]}
+    for capability in expected:
+        if capability not in called:
+            reasons.append(f"did not read {capability}")
 
 
 def grade_solution_answer(case: Case, reply: str, catalog: SolutionCatalog,
