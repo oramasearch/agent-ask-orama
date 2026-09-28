@@ -45,14 +45,100 @@ METHODOLOGIES = [
      "issue": "zetta#1053"},
 ]
 
+SOLUTIONS = [
+    {
+        "id": "S-1",
+        "name": "Customer retention",
+        "promise": "Prioritize retention work from measured customer risk.",
+        "use_case": "Retention operations",
+        "composition": [
+            {"id": "M-1", "role": "risk ranking", "minimum_level": 1},
+            {"id": "M-6", "role": "incrementality", "minimum_level": 3},
+        ],
+        "levels": [
+            {"level": 1, "name": "Rank", "description": "Rank customer risk."},
+            {"level": 2, "name": "Act", "description": "Route reviewed actions."},
+        ],
+        "action_patterns": ["reviewed outreach"],
+        "latency": ["batch"],
+        "autonomy": [{"action_class": "outreach", "autonomy": "approval_required"}],
+        "data_roles": [{"role": "customer history", "required": True}],
+        "runnable": True,
+        "status": "available",
+        "missing": [],
+        "issue": "zetta#1102",
+    },
+    {
+        "id": "S-2",
+        "name": "Expansion signals",
+        "promise": "Surface accounts that merit review for expansion.",
+        "use_case": "Account expansion",
+        "composition": [{"id": "M-3", "role": "cohorts", "minimum_level": 1}],
+        "levels": [{"level": 1, "name": "Discover", "description": "Find cohorts."}],
+        "action_patterns": ["sales review"],
+        "latency": ["batch"],
+        "autonomy": [{"action_class": "sales_task", "autonomy": "approval_required"}],
+        "data_roles": [{"role": "account activity", "required": True}],
+        "runnable": False,
+        "status": "preview",
+        "missing": [
+            {"id": "decision-policy", "name": "decision policy engine", "issue": "zetta#1104"},
+            {"id": "measured-readout", "name": "measured-value readout", "issue": "zetta#1108"},
+        ],
+        "issue": "zetta#1102",
+    },
+    {
+        "id": "B-1",
+        "name": "Procurement sketch",
+        "promise": "Explore governed procurement actions.",
+        "use_case": "Procurement",
+        "composition": [],
+        "levels": [],
+        "action_patterns": [],
+        "latency": [],
+        "autonomy": [],
+        "data_roles": [{"role": "purchase history", "required": True}],
+        "runnable": False,
+        "status": "sketch",
+        "missing": [],
+        "promotion_condition": "add supported methodology callbacks",
+        "issue": "zetta#1102",
+    },
+]
+
 
 class FakeLake:
-    def __init__(self, methodology_response=None) -> None:
+    def __init__(self, methodology_response=None, solution_response=None,
+                 solution_operations=None) -> None:
         self.requests: list[httpx.Request] = []
         self.polls = 0
         self.methodology_response = methodology_response or {
             "ok": True,
             "value": {"methodologies": METHODOLOGIES},
+        }
+        self.solution_response = solution_response or {
+            "ok": True,
+            "value": {"solutions": SOLUTIONS},
+        }
+        self.solution_operations = solution_operations or {
+            "get_policy": {"ok": True, "value": {
+                "project": "retention", "version": 3,
+                "rules": [{"when": "risk is high", "action": "request review"}],
+            }},
+            "get_experiment": {"ok": True, "value": {
+                "project": "retention", "status": "collecting",
+            }},
+            "list_ledger": {"ok": True, "value": {
+                "entries": [{"score": "recorded", "decision": "review",
+                             "action": "pending", "outcome": "not_observed"}],
+            }},
+            "get_monitor": {"ok": True, "value": {
+                "project": "retention", "status": "healthy",
+            }},
+            "get_roi_readout": {"ok": True, "value": {
+                "project": "retention", "status": "insufficient_evidence",
+                "measured_value": None,
+            }},
         }
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
@@ -73,6 +159,18 @@ class FakeLake:
             sent = json.loads(request.content)
             if sent.get("capability") == "list_methodologies":
                 return httpx.Response(200, json=self.methodology_response)
+            if sent.get("capability") == "list_solutions":
+                return httpx.Response(200, json=self.solution_response)
+            if sent.get("capability") == "get_solution":
+                solution_id = (sent.get("input") or {}).get("solution")
+                solutions = (self.solution_response.get("value") or {}).get("solutions") or []
+                solution = next((item for item in solutions if item.get("id") == solution_id), None)
+                if solution is None:
+                    return httpx.Response(200, json={"ok": False, "error": {
+                        "code": "not_found", "message": f"unknown solution {solution_id}"}})
+                return httpx.Response(200, json={"ok": True, "value": {"solution": solution}})
+            if sent.get("capability") in self.solution_operations:
+                return httpx.Response(200, json=self.solution_operations[sent["capability"]])
             return httpx.Response(200, json={"ok": True, "value": {"datasets": [
                 {"database": "datasets", "name": "accounts", "rows": 200}]}})
         if request.url.path == "/v1/agent_turn":
@@ -222,7 +320,15 @@ def test_evals_are_generated_from_the_index_and_graded_by_rules():
     index = agent.capability_index(OPENAPI)
     cases = evals.generate(index, changes=2, reads=2, clarify=2)
     kinds = {case.kind for case in cases}
-    assert kinds == {"change", "read", "clarify", "delegate", "methodology"}
+    assert kinds == {
+        "change",
+        "read",
+        "clarify",
+        "delegate",
+        "methodology",
+        "solution",
+        "solution_readout",
+    }
     assert all(not index[c.expect].required for c in cases if c.kind in {"change", "read"}), \
         "a change or read case can be done as asked"
     change = next(case for case in cases if case.kind == "change")
@@ -265,6 +371,29 @@ def test_evals_are_generated_from_the_index_and_graded_by_rules():
     assert not evals.grade(speech, wrong_support, index, [], catalog).passed
     named_issue = {**missing_issue, "reply": "Speech is not supported yet; see zetta#1053."}
     assert evals.grade(speech, named_issue, index, [], catalog).passed
+
+    solutions = agent.SolutionCatalog(
+        solutions={item["id"]: item for item in SOLUTIONS},
+        loaded=True,
+    )
+    solution_read = {"capability": "workspace_query", "input": {
+        "capability": "list_solutions", "input": {}}, "ok": True}
+    runnable = next(case for case in cases if case.expect == "S-1")
+    available = {**nothing, "reply": "Yes, S-1 is runnable in production.",
+                 "reads": [solution_read]}
+    assert evals.grade(runnable, available, index, [], solutions=solutions).passed
+    sketch = next(case for case in cases if case.expect == "B-1")
+    declined = {**nothing, "reply": (
+        "B-1 is a sketch and cannot be built; add supported methodology callbacks."
+    ), "reads": [solution_read]}
+    assert evals.grade(sketch, declined, index, [], solutions=solutions).passed
+    readout = next(case for case in cases if case.kind == "solution_readout")
+    measured = {**nothing, "reply": "There is not enough measured evidence yet.", "reads": [
+        solution_read,
+        {"capability": "workspace_query", "input": {
+            "capability": "get_roi_readout", "input": {"project": "retention"}}, "ok": True},
+    ]}
+    assert evals.grade(readout, measured, index, [], solutions=solutions).passed
 
 
 def test_a_read_that_takes_no_space_is_sent_without_one():
@@ -323,7 +452,7 @@ def test_a_runnable_methodology_can_be_proposed_after_reading_the_registry():
             impact="Recompiles segments as an M-3 Pipeline")]),
         message(content="I proposed the runnable M-3 segmentation Pipeline."))
     answer = run(client, fake, message="Can you segment my customers?")
-    assert "prompt v5" in client.seen[0][0]["content"]
+    assert "prompt v6" in client.seen[0][0]["content"]
     assert answer.proposals == [{
         "capability": "workspace_act",
         "input": {
@@ -370,3 +499,184 @@ def test_an_old_engine_falls_back_to_m1_only():
     fallback = client.seen[1][-1]["content"]
     assert "Only M-1 runs" in fallback
     assert "zetta#1061" in fallback
+
+
+def test_a_runnable_solution_is_read_from_the_registry_and_proposed():
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="workspace_query", input={
+            "capability": "list_solutions", "input": {}})]),
+        message(tool_calls=[call("lake_read", capability="workspace_query", input={
+            "capability": "get_solution", "input": {"solution": "S-1"}})]),
+        message(tool_calls=[call("lake_propose", capability="workspace_act", input={
+            "capability": "create_solution",
+            "input": {"project": "retention", "solution": "S-1", "level": 1,
+                      "sources": {"source": "datasets", "table": "customers"}}},
+            impact="Builds the S-1 level 1 Pipeline in retention")]),
+        message(content="I proposed the S-1 level 1 Pipeline for your confirmation."))
+    answer = run(client, fake, message="Build S-1 level 1 in retention from customers.")
+    assert "prompt v6" in client.seen[0][0]["content"]
+    detail = client.seen[2][-1]["content"]
+    assert "Customer retention" in detail
+    assert "minimum_level" in detail
+    assert "data_roles" in detail
+    assert answer.proposals == [{
+        "capability": "workspace_act",
+        "input": {
+            "customer_id": "c-1",
+            "capability": "create_solution",
+            "input": {"project": "retention", "solution": "S-1", "level": 1,
+                      "sources": {"source": "datasets", "table": "customers"}},
+        },
+        "impact": "Builds the S-1 level 1 Pipeline in retention",
+    }]
+    assert not any(request.url.path == "/v1/workspace_act" for request in fake.requests)
+
+
+def test_a_solution_with_missing_components_is_described_as_a_preview():
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="workspace_query", input={
+            "capability": "list_solutions", "input": {}})]),
+        message(tool_calls=[call("lake_read", capability="workspace_query", input={
+            "capability": "get_solution", "input": {"solution": "S-2"}})]),
+        message(content=(
+            "The pipeline builds as a preview; production operation needs the decision policy "
+            "engine (zetta#1104) and measured-value readout (zetta#1108)."
+        )))
+    answer = run(client, fake, message="Is S-2 ready to use?")
+    detail = client.seen[2][-1]["content"]
+    assert '"runnable": false' in detail
+    assert "decision policy engine" in detail
+    assert "zetta#1108" in detail
+    assert "pipeline builds" in answer.reply
+    assert "production operation needs" in answer.reply
+
+
+def test_a_solution_sketch_is_refused_with_its_promotion_condition():
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="workspace_query", input={
+            "capability": "list_solutions", "input": {}})]),
+        message(tool_calls=[call("lake_propose", capability="workspace_act", input={
+            "capability": "create_solution",
+            "input": {"project": "procurement", "solution": "B-1", "level": 1,
+                      "sources": {"source": "datasets", "table": "purchases"}}},
+            impact="Builds the B-1 Pipeline")]),
+        message(content=(
+            "B-1 is a sketch and cannot be built; promotion needs supported methodology "
+            "callbacks and is tracked by zetta#1102."
+        )))
+    answer = run(client, fake, message="Build B-1 for procurement.")
+    assert not answer.proposals
+    refusal = client.seen[2][-1]["content"]
+    assert "not_supported" in refusal
+    assert "add supported methodology callbacks" in refusal
+    assert "https://github.com/oramasearch/zetta/issues/1102" in refusal
+    assert not any(request.url.path == "/v1/workspace_act" for request in fake.requests)
+
+
+def test_an_engine_without_the_solution_registry_uses_methodologies_only():
+    fake = FakeLake(solution_response={
+        "ok": False,
+        "error": {"code": "unknown_capability", "message": "unknown list_solutions"},
+    })
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="workspace_query", input={
+            "capability": "list_solutions", "input": {}})]),
+        message(content=(
+            "This engine does not have solution operations deployed yet; I can check its "
+            "methodologies instead."
+        )))
+    answer = run(client, fake, message="Which solutions can I build?")
+    assert "solution operations" in answer.reply
+    fallback = client.seen[1][-1]["content"]
+    assert "predates list_solutions" in fallback
+    assert "Methodology support may still be available" in fallback
+
+
+def test_solution_policy_ledger_monitor_and_readout_are_read_after_the_registry():
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="workspace_query", input={
+            "capability": "list_solutions", "input": {}})]),
+        message(tool_calls=[
+            call("lake_read", capability="workspace_query", input={
+                "capability": capability, "input": {"project": "retention"}})
+            for capability in (
+                "get_policy",
+                "get_experiment",
+                "list_ledger",
+                "get_monitor",
+                "get_roi_readout",
+            )
+        ]),
+        message(content=(
+            "Retention uses policy version 3 and its monitor is healthy. The holdout is still "
+            "collecting, the ledger has a pending reviewed action, and the measured-value "
+            "readout has insufficient evidence, so there is no return figure to report."
+        )))
+    answer = run(client, fake, message="Show retention's policy, evidence and measured readout.")
+    inner = [
+        read["input"]["capability"]
+        for read in answer.reads
+        if read["capability"] == "workspace_query"
+    ]
+    assert inner == [
+        "list_solutions",
+        "get_policy",
+        "get_experiment",
+        "list_ledger",
+        "get_monitor",
+        "get_roi_readout",
+    ]
+    assert "insufficient evidence" in answer.reply
+    assert "no return figure" in answer.reply
+
+
+def test_a_policy_change_is_proposed_and_never_sent():
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="workspace_query", input={
+            "capability": "list_solutions", "input": {}})]),
+        message(tool_calls=[call("lake_read", capability="workspace_query", input={
+            "capability": "get_policy", "input": {"project": "retention"}})]),
+        message(tool_calls=[call("lake_propose", capability="workspace_act", input={
+            "capability": "update_policy",
+            "input": {"project": "retention", "changes": {"review_threshold": "high"}}},
+            impact="Requires review for every high-risk retention action")]),
+        message(content="I proposed the policy change for your confirmation; it is not active."))
+    answer = run(client, fake, message="Require review for every high-risk retention action.")
+    assert answer.proposals[0]["input"]["capability"] == "update_policy"
+    assert "not active" in answer.reply
+    assert not any(request.url.path == "/v1/workspace_act" for request in fake.requests)
+
+
+def test_a_solution_operation_requires_this_turns_registry_read():
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[call("lake_propose", capability="workspace_act", input={
+            "capability": "update_policy",
+            "input": {"project": "retention", "changes": {"review_threshold": "high"}}},
+            impact="Requires review for every high-risk retention action")]),
+        message(content="I need to read the current solution registry first."))
+    answer = run(client, fake, message="Change retention's review threshold.")
+    assert not answer.proposals
+    assert "solution_registry_required" in client.seen[1][-1]["content"]
+    assert not any(request.url.path == "/v1/workspace_act" for request in fake.requests)
+
+
+def test_an_unknown_solution_operation_is_reported_as_not_deployed():
+    fake = FakeLake(solution_operations={
+        "get_monitor": {"ok": False, "error": {
+            "code": "unknown_capability", "message": "unknown get_monitor"}},
+    })
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="workspace_query", input={
+            "capability": "list_solutions", "input": {}})]),
+        message(tool_calls=[call("lake_read", capability="workspace_query", input={
+            "capability": "get_monitor", "input": {"project": "retention"}})]),
+        message(content="The solution monitor operation is not deployed yet."))
+    answer = run(client, fake, message="How is retention's monitor?")
+    assert "not deployed yet" in answer.reply
+    assert "unknown_capability" in client.seen[2][-1]["content"]

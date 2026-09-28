@@ -14,6 +14,8 @@ Graded deterministically, never by a judge:
   `agent-autosuggest`;
 - a **methodology** question must read `list_methodologies`, affirm runnable support, or decline
   unsupported work with its issue;
+- a **solution** question must read `list_solutions` and describe the current entry honestly;
+- a **solution readout** request must read the registry, then call `get_roi_readout`;
 - every proposal and read must name a capability that exists (no invented names).
 
 Run against a real lake as a real person:
@@ -43,6 +45,7 @@ from agent_ask_orama.agent import (
     Capability,
     Lake,
     MethodologyCatalog,
+    SolutionCatalog,
     Turn,
     answer_turn,
     capability_index,
@@ -62,11 +65,16 @@ METHODOLOGY_QUESTIONS = [
     ("M-14", "Can you do speech analytics?"),
 ]
 
+SOLUTION_QUESTIONS = [
+    ("S-1", "Is solution S-1 available for production use?"),
+    ("B-1", "Can I build solution B-1?"),
+]
+
 
 @dataclass
 class Case:
     id: str
-    kind: str       # change | read | clarify | delegate | methodology
+    kind: str       # change | read | clarify | delegate | methodology | solution | solution_readout
     message: str
     expect: str     # the capability, or the agent key
 
@@ -108,11 +116,17 @@ def generate(index: dict[str, Capability], changes: int = 8, reads: int = 6,
     for methodology, message in METHODOLOGY_QUESTIONS:
         cases.append(Case(f"methodology-{methodology.lower()}", "methodology", message,
                           methodology))
+    for solution, message in SOLUTION_QUESTIONS:
+        cases.append(Case(f"solution-{solution.lower()}", "solution", message, solution))
+    cases.append(Case("solution-roi-readout", "solution_readout",
+                      "Show the measured ROI readout for solution Project retention.",
+                      "get_roi_readout"))
     return cases
 
 
 def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
-          writes_sent: list[str], methodologies: MethodologyCatalog | None = None) -> Graded:
+          writes_sent: list[str], methodologies: MethodologyCatalog | None = None,
+          solutions: SolutionCatalog | None = None) -> Graded:
     reasons: list[str] = []
     named = [p["capability"] for p in answer["proposals"]] + [r["capability"]
                                                                for r in answer["reads"]]
@@ -173,7 +187,76 @@ def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
                     reasons.append(f"did not decline unsupported {case.expect}")
                 if issue.lower() not in reply and issue_url(issue).lower() not in reply:
                     reasons.append(f"did not name {issue} for unsupported {case.expect}")
+    elif case.kind in {"solution", "solution_readout"}:
+        solution_read = any(
+            read.get("capability") == "workspace_query"
+            and (read.get("input") or {}).get("capability") == "list_solutions"
+            for read in answer["reads"]
+        )
+        if not solution_read:
+            reasons.append("did not read list_solutions")
+        if solutions is None or not solutions.loaded:
+            reasons.append("eval did not load the solution registry")
+        elif case.kind == "solution_readout":
+            readout = any(
+                read.get("capability") == "workspace_query"
+                and (read.get("input") or {}).get("capability") == case.expect
+                for read in answer["reads"]
+            )
+            if not readout:
+                reasons.append(f"did not read {case.expect}")
+        else:
+            grade_solution_answer(case, answer["reply"], solutions, reasons)
     return Graded(case, not reasons, reasons, answer)
+
+
+def grade_solution_answer(case: Case, reply: str, catalog: SolutionCatalog,
+                          reasons: list[str]) -> None:
+    """Grade availability language against the live solution entry."""
+    lowered = reply.lower()
+    item = catalog.solutions.get(case.expect)
+    if catalog.old_engine:
+        if "not deployed" not in lowered and "no solution registry" not in lowered:
+            reasons.append("did not explain that solution operations are not deployed")
+        return
+    if item is None:
+        if "not available" not in lowered and "not in" not in lowered:
+            reasons.append(f"did not explain that {case.expect} is absent")
+        return
+    negative = any(phrase in lowered for phrase in (
+        "cannot",
+        "can't",
+        "not available",
+        "not runnable",
+        "not supported",
+        "not production-ready",
+        "not ready for production",
+    ))
+    if item.get("status") == "sketch":
+        condition = str(item.get("promotion_condition") or "").lower()
+        issue = str(item.get("issue") or "")
+        if not negative and "sketch" not in lowered:
+            reasons.append(f"did not decline sketch {case.expect}")
+        if condition and condition not in lowered:
+            if issue.lower() not in lowered and issue_url(issue).lower() not in lowered:
+                reasons.append(f"did not name the promotion condition or issue for {case.expect}")
+        return
+    if item.get("runnable"):
+        affirmative = any(word in lowered for word in ("yes", "available", "runnable",
+                                                        "production"))
+        if not affirmative or negative:
+            reasons.append(f"did not affirm runnable {case.expect}")
+        return
+    missing = item.get("missing") or item.get("missing_components") or []
+    missing_terms = [
+        str(component.get("issue") or component.get("name") or component.get("id") or "").lower()
+        for component in missing
+        if isinstance(component, dict)
+    ]
+    if "pipeline" not in lowered or not any(word in lowered for word in ("build", "preview")):
+        reasons.append(f"did not explain the buildable Pipeline for {case.expect}")
+    if missing_terms and not any(term and term in lowered for term in missing_terms):
+        reasons.append(f"did not name a missing production component for {case.expect}")
 
 
 def read_methodologies(lake: Lake, index: dict[str, Capability],
@@ -184,6 +267,20 @@ def read_methodologies(lake: Lake, index: dict[str, Capability],
     if capability is None:
         return catalog
     payload = with_customer(capability, {"capability": "list_methodologies", "input": {}},
+                            customer_id)
+    result = lake.call(capability.name, payload, read=capability.get)
+    catalog.observe(payload, result)
+    return catalog
+
+
+def read_solutions(lake: Lake, index: dict[str, Capability],
+                   customer_id: str) -> SolutionCatalog:
+    """Read the live registry once so solution evals know the expected answer."""
+    catalog = SolutionCatalog()
+    capability = index.get("workspace_query")
+    if capability is None:
+        return catalog
+    payload = with_customer(capability, {"capability": "list_solutions", "input": {}},
                             customer_id)
     result = lake.call(capability.name, payload, read=capability.get)
     catalog.observe(payload, result)
@@ -216,6 +313,7 @@ def main() -> int:
     probe = Lake(base)
     index = capability_index(probe.openapi())
     methodologies = read_methodologies(probe, index, base.customer_id)
+    solutions = read_solutions(probe, index, base.customer_id)
     probe.close()
     client = OpenAI()
     results: list[Graded] = []
@@ -230,7 +328,7 @@ def main() -> int:
                       "delegations": [], "rounds": 0}
         finally:
             lake.close()
-        results.append(grade(case, answer, index, recording.writes, methodologies))
+        results.append(grade(case, answer, index, recording.writes, methodologies, solutions))
     passed = sum(result.passed for result in results)
     args.out.mkdir(parents=True, exist_ok=True)
     stamp = date.today().isoformat()

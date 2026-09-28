@@ -21,6 +21,10 @@ and calls this service for every message.
   reported as working, with its task.
 - **Its vocabulary is derived.** The capabilities it may name come from lake's `/v1/openapi.json`
   at every turn, less the ceremonies a person performs (signing in, recovering, minting keys).
+- **It knows the current solution catalogue.** On every solution turn it reads `list_solutions`,
+  uses `get_solution` for the selected entry, reports missing production foundations and sketches
+  honestly, and reads a solution Project's policy, holdout, ledger, monitor and measured readout.
+  Policy and solution changes are proposals the person confirms; Ask Orama never applies them.
 - **It knows what the engine can run.** For methodology support, Pipeline changes and Pipelines
   that train nothing, it reads the workspace's live `list_methodologies` registry. It proposes
   `compile_intent` or another methodology-bearing edit only when that turn's registry marks the
@@ -56,8 +60,9 @@ does not give must be answered with a question or a lookup first (never a guesse
 request must reach `agent-project` and an opportunity request `agent-autosuggest`, and nothing may
 name a capability lake does not have. Fixed methodology cases ask whether customer segmentation
 and speech analytics run; they are graded against the live registry, including the tracking issue
-when support is absent. Change and read cases sample only capabilities whose required inputs are
-the space alone, so they can be done as asked.
+when support is absent. Fixed solution cases grade S-1 and B-1 against the live catalogue, and a
+measured-readout case requires `get_roi_readout` after `list_solutions`. Change and read cases
+sample only capabilities whose required inputs are the space alone, so they can be done as asked.
 
 ```sh
 LAKE_URL=https://lake.oramadev.net LAKE_TOKEN=<a person's token> CUSTOMER_ID=<their space> \
@@ -80,13 +85,16 @@ buildctl --addr "kube-pod://<buildkit pod>?context=orama-production-cluster-01&n
 
 `uv run pytest`: the index without ceremonies, reads as the person in their space, a change that is
 proposed and never sent, methodology registry enforcement and the old-engine fallback, delegation
-through lake, an unknown capability as an observation, the service's conversation and a trace
+through lake, solution catalogue and policy/readout behavior, solution and policy proposals that
+are never sent, unknown capabilities as observations, the service's conversation and a trace
 without the key, and the eval grader.
 
 ## Documentation
 
 - [`docs/methodologies/`](docs/methodologies/) — registry reads, proposal enforcement, graph
   explanations and old-engine behavior.
+- [`docs/solutions/`](docs/solutions/) — catalogue reads, preview and sketch behavior, policy and
+  evidence reads, proposal enforcement and old-engine behavior.
 
 ## Known failures and limits
 
