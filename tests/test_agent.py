@@ -23,6 +23,18 @@ OPENAPI = {"paths": {
     "/v1/identity": {"get": {"summary": "This lake's identity", "parameters": []}},
     "/v1/get_repository": {"get": {"summary": "Get a repository", "parameters": CUSTOMER + [
         {"in": "query", "name": "repository_id", "required": True}]}},
+    "/v1/list_apps": {"get": {"summary": "List Apps", "parameters": CUSTOMER}},
+    "/v1/get_app": {"get": {"summary": "Get an App", "parameters": CUSTOMER + [
+        {"in": "query", "name": "app_id", "required": True}]}},
+    "/v1/receive_app_events": {"get": {"summary": "Receive App events",
+                                          "parameters": CUSTOMER + [
+        {"in": "query", "name": "app_id", "required": True}]}},
+    "/v1/list_builds": {"get": {"summary": "List builds", "parameters": CUSTOMER}},
+    "/v1/get_build": {"get": {"summary": "Get a build", "parameters": CUSTOMER + [
+        {"in": "query", "name": "build_id", "required": True}]}},
+    "/v1/receive_build_events": {"get": {"summary": "Receive build events",
+                                            "parameters": CUSTOMER + [
+        {"in": "query", "name": "build_id", "required": True}]}},
     # As lake serves it: a POST (its input is an object) that only reads.
     "/v1/workspace_query": {"post": {"summary": "Query a workspace", "x-lake-action": "read",
                                      "requestBody": body("customer_id", "capability")}},
@@ -30,8 +42,19 @@ OPENAPI = {"paths": {
                                    "requestBody": body("customer_id", "capability", "input")}},
     "/v1/create_repository": {"post": {"summary": "Create a repository",
                                        "requestBody": body("customer_id", "name")}},
+    "/v1/create_app": {"post": {"summary": "Create an App",
+                                  "requestBody": body("customer_id", "name")}},
+    "/v1/deploy_app": {"post": {"summary": "Deploy an App",
+                                  "requestBody": body("customer_id", "app_id")}},
+    "/v1/build_app": {"post": {"summary": "Build an App",
+                                 "requestBody": body("customer_id", "app_id")}},
+    "/v1/rollback_app": {"post": {"summary": "Roll back an App",
+                                    "requestBody": body("customer_id", "app_id")}},
+    "/v1/scale_app": {"post": {"summary": "Scale an App",
+                                 "requestBody": body("customer_id", "app_id", "replicas")}},
     "/v1/agent_turn": {"post": {"summary": "Talk to an agent",
-                                "requestBody": body("customer_id", "agent", "message")}},
+                                "requestBody": body("customer_id", "agent", "kind", "message",
+                                                    "context")}},
     "/v1/sign_in_password": {"post": {"summary": "Sign in"}},
     "/v1/repositories/{id}/sync/push": {"post": {"summary": "binary"}},
 }}
@@ -147,6 +170,39 @@ class FakeLake:
             return httpx.Response(200, json=OPENAPI)
         if request.url.path == "/v1/list_repositories":
             return httpx.Response(200, json={"ok": True, "value": {"items": [{"name": "site"}]}})
+        if request.url.path == "/v1/list_apps":
+            return httpx.Response(200, json={"ok": True, "value": {"apps": [{
+                "id": "app-1", "name": "risk-console", "desired": "running",
+                "status": {"phase": "Running", "ready": True},
+            }]}})
+        if request.url.path == "/v1/get_app":
+            return httpx.Response(200, json={"ok": True, "value": {"app": {
+                "id": request.url.params["app_id"], "name": "risk-console",
+                "desired": "running", "generation": 4,
+                "status": {"phase": "Running", "ready": True,
+                           "observed_generation": 4, "message": "healthy"},
+            }}})
+        if request.url.path == "/v1/receive_app_events":
+            return httpx.Response(200, json={"ok": True, "value": {
+                "events": [{"sequence": 1, "phase": "Running", "message": "healthy"}],
+                "next_sequence": 2,
+            }})
+        if request.url.path == "/v1/list_builds":
+            return httpx.Response(200, json={"ok": True, "value": {"builds": [{
+                "id": "build-9", "app_id": "app-1", "phase": "failed",
+                "created_at": "2026-09-28T12:00:00Z",
+            }]}})
+        if request.url.path == "/v1/get_build":
+            return httpx.Response(200, json={"ok": True, "value": {"build": {
+                "id": request.url.params["build_id"], "app_id": "app-1", "phase": "failed",
+                "message": "dependency install failed",
+            }}})
+        if request.url.path == "/v1/receive_build_events":
+            return httpx.Response(200, json={"ok": True, "value": {
+                "events": [{"sequence": 1, "type": "error",
+                            "message": "package lock is out of date"}],
+                "next_sequence": 2,
+            }})
         if request.url.path == "/v1/identity":
             if "customer_id" in request.url.params:
                 return httpx.Response(400, json={"ok": False, "error": {
@@ -175,19 +231,24 @@ class FakeLake:
                 {"database": "datasets", "name": "accounts", "rows": 200}]}})
         if request.url.path == "/v1/agent_turn":
             sent = json.loads(request.content)
-            if sent["agent"] == "agent-project":
+            if sent["agent"] in {"agent-project", "agent-application"}:
                 # A library agent: the turn is a task on lake's agent bus (lake#269).
                 return httpx.Response(200, json={"ok": True, "value": {
-                    "task_id": "t-1", "agent": "agent-project", "status": "pending"}})
+                    "task_id": "t-app" if sent["agent"] == "agent-application" else "t-1",
+                    "agent": sent["agent"], "status": "pending"}})
             return httpx.Response(200, json={"ok": True, "value": {
                 "agent": sent["agent"], "reply": "built a churn Pipeline"}})
         if request.url.path == "/v1/receive_agent_events":
             self.polls += 1
             status = "running" if self.polls < 2 else "succeeded"
-            answer = {"ok": True, "result": {"reply": "built a churn Pipeline"}}
+            task_id = request.url.params["task_id"]
+            app_task = task_id == "t-app"
+            agent_name = "agent-application" if app_task else "agent-project"
+            reply = "proposed the risk console App" if app_task else "built a churn Pipeline"
+            answer = {"ok": True, "result": {"reply": reply}}
             return httpx.Response(200, json={"ok": True, "value": {
                 "events": [], "next_sequence": self.polls + 1,
-                "task": {"task_id": "t-1", "agent": "agent-project", "status": status,
+                "task": {"task_id": task_id, "agent": agent_name, "status": status,
                          "answer": answer if status == "succeeded" else None}}})
         return httpx.Response(403, json={"ok": False, "error": {"code": "unauthorized",
                                                                 "message": "no"}})
@@ -234,8 +295,12 @@ def run(client, fake, history=None, **overrides):
 
 def test_the_index_is_lakes_own_openapi_without_ceremonies():
     index = agent.capability_index(OPENAPI)
-    assert set(index) == {"list_repositories", "identity", "get_repository", "workspace_query",
-                          "workspace_act", "create_repository", "agent_turn"}
+    assert set(index) == {
+        "list_repositories", "identity", "get_repository", "list_apps", "get_app",
+        "receive_app_events", "list_builds", "get_build", "receive_build_events",
+        "workspace_query", "workspace_act", "create_repository", "create_app", "deploy_app",
+        "build_app", "rollback_app", "scale_app", "agent_turn",
+    }
     assert index["get_repository"].required == {"repository_id"}
     assert not index["list_repositories"].required, "the space is not a required input"
     assert index["list_repositories"].read and not index["create_repository"].read
@@ -287,6 +352,113 @@ def test_it_delegates_through_lake_and_reports_the_agents_answer():
     assert answer.delegations[0]["answer"]["answer"]["result"]["reply"] == "built a churn Pipeline"
 
 
+def test_apps_are_listed_from_lake():
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="list_apps")]),
+        message(content="You have one App, risk-console, and it is running."))
+    answer = run(client, fake, message="What Apps do I have?")
+    assert "prompt v7" in client.seen[0][0]["content"]
+    assert answer.reads == [{
+        "capability": "list_apps",
+        "input": {"customer_id": "c-1"},
+        "ok": True,
+    }]
+    assert "risk-console" in answer.reply
+
+
+def test_app_health_uses_current_state_and_events():
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[
+            call("lake_read", capability="get_app", input={"app_id": "app-1"}),
+            call("lake_read", capability="receive_app_events",
+                 input={"app_id": "app-1", "from_sequence": 1, "wait_ms": 0}),
+        ]),
+        message(content=(
+            "risk-console is healthy: generation 4 is observed, ready, and Running. "
+            "Its latest event also reports healthy."
+        )))
+    answer = run(client, fake, message="Is app-1 healthy?")
+    assert [read["capability"] for read in answer.reads] == ["get_app", "receive_app_events"]
+    assert "healthy" in answer.reply
+    assert "generation 4" in answer.reply
+
+
+def test_last_build_failure_uses_build_state_and_events():
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="list_builds")]),
+        message(tool_calls=[
+            call("lake_read", capability="get_build", input={"build_id": "build-9"}),
+            call("lake_read", capability="receive_build_events",
+                 input={"build_id": "build-9", "from_sequence": 1, "wait_ms": 0}),
+        ]),
+        message(content=(
+            "The latest build, build-9, failed during dependency installation because the "
+            "package lock is out of date."
+        )))
+    answer = run(client, fake, message="Why did the last build for app-1 fail?")
+    assert [read["capability"] for read in answer.reads] == [
+        "list_builds", "get_build", "receive_build_events",
+    ]
+    assert "package lock is out of date" in answer.reply
+
+
+def test_app_work_is_an_app_turn_followed_through_lake():
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[call(
+            "delegate",
+            agent="agent-application",
+            request="Build an App that shows the highest-risk accounts.",
+            context={"page": "ship/apps"},
+        )]),
+        message(content=(
+            "ApplicationAgent proposed the risk console App for your review; it has not been "
+            "created yet."
+        )))
+    answer = run(client, fake, message="Build me a risk console App.")
+    sent = json.loads(next(
+        request.content
+        for request in fake.requests
+        if request.url.path == "/v1/agent_turn"
+    ))
+    assert sent == {
+        "customer_id": "c-1",
+        "agent": "agent-application",
+        "message": "Build an App that shows the highest-risk accounts.",
+        "context": {"page": "ship/apps"},
+        "kind": "app",
+    }
+    assert answer.delegations[0]["kind"] == "app"
+    assert answer.delegations[0]["answer"]["status"] == "succeeded"
+    assert "has not been created" in answer.reply
+
+
+def test_app_actions_are_proposed_and_never_sent():
+    actions = [
+        ("create_app", {"name": "risk-console"}),
+        ("deploy_app", {"app_id": "app-1", "image": "risk-console:v2"}),
+        ("build_app", {"app_id": "app-1"}),
+        ("rollback_app", {"app_id": "app-1", "image": "risk-console:v1"}),
+        ("scale_app", {"app_id": "app-1", "replicas": 2}),
+    ]
+    for capability, payload in actions:
+        fake = FakeLake()
+        client = Scripted(
+            message(tool_calls=[call(
+                "lake_propose",
+                capability=capability,
+                input=payload,
+                impact=f"Proposes {capability} for risk-console",
+            )]),
+            message(content=f"I proposed {capability}; confirm it in lake."))
+        answer = run(client, fake, message=f"Please {capability} for risk-console.")
+        assert answer.proposals[0]["capability"] == capability
+        assert not any(request.url.path == f"/v1/{capability}" for request in fake.requests)
+
+
 def test_an_unknown_capability_is_an_observation():
     fake = FakeLake()
     client = Scripted(message(tool_calls=[call("lake_read", capability="drop_database")]),
@@ -325,6 +497,9 @@ def test_evals_are_generated_from_the_index_and_graded_by_rules():
         "read",
         "clarify",
         "delegate",
+        "app_list",
+        "app_health",
+        "build_failure",
         "methodology",
         "solution",
         "solution_readout",
@@ -341,17 +516,43 @@ def test_evals_are_generated_from_the_index_and_graded_by_rules():
     assert not evals.grade(change, invented, index, []).passed
 
     clarify = next(case for case in cases if case.kind == "clarify")
-    assert clarify.expect == "get_repository"
     nothing = {"reply": "", "reads": [], "proposals": [], "delegations": []}
-    asked = {**nothing, "reply": "Which repository should I get?"}
+    asked = {**nothing, "reply": "Which item should I use?"}
     assert evals.grade(clarify, asked, index, []).passed, "asking for the id passes"
     found = {**nothing, "reads": [{"capability": "list_repositories"},
-                                  {"capability": "get_repository"}]}
+                                  {"capability": clarify.expect}]}
     assert evals.grade(clarify, found, index, []).passed, "finding the id, then reading, passes"
-    guessed = {**nothing, "reads": [{"capability": "get_repository"}]}
+    guessed = {**nothing, "reads": [{"capability": clarify.expect}]}
     assert not evals.grade(clarify, guessed, index, []).passed, "a guessed id fails"
     silent = {**nothing, "reply": "Done."}
     assert not evals.grade(clarify, silent, index, []).passed
+
+    app_list = next(case for case in cases if case.kind == "app_list")
+    listed = {**nothing, "reads": [{"capability": "list_apps"}]}
+    assert evals.grade(app_list, listed, index, []).passed
+    app_health = next(case for case in cases if case.kind == "app_health")
+    health = {**nothing, "reads": [
+        {"capability": "get_app"},
+        {"capability": "receive_app_events"},
+    ]}
+    assert evals.grade(app_health, health, index, []).passed
+    assert not evals.grade(app_health, listed, index, []).passed
+    build_failure = next(case for case in cases if case.kind == "build_failure")
+    failed_build = {**nothing, "reads": [
+        {"capability": "list_builds"},
+        {"capability": "get_build"},
+        {"capability": "receive_build_events"},
+    ]}
+    assert evals.grade(build_failure, failed_build, index, []).passed
+    app_delegate = next(
+        case
+        for case in cases
+        if case.kind == "delegate" and case.expect == "agent-application"
+    )
+    delegated = {**nothing, "delegations": [{"agent": "agent-application", "kind": "app"}]}
+    assert evals.grade(app_delegate, delegated, index, []).passed
+    wrong_kind = {**nothing, "delegations": [{"agent": "agent-application", "kind": None}]}
+    assert not evals.grade(app_delegate, wrong_kind, index, []).passed
 
     catalog = agent.MethodologyCatalog(
         methodologies={item["id"]: item for item in METHODOLOGIES},
@@ -452,7 +653,7 @@ def test_a_runnable_methodology_can_be_proposed_after_reading_the_registry():
             impact="Recompiles segments as an M-3 Pipeline")]),
         message(content="I proposed the runnable M-3 segmentation Pipeline."))
     answer = run(client, fake, message="Can you segment my customers?")
-    assert "prompt v6" in client.seen[0][0]["content"]
+    assert "prompt v7" in client.seen[0][0]["content"]
     assert answer.proposals == [{
         "capability": "workspace_act",
         "input": {
@@ -515,7 +716,7 @@ def test_a_runnable_solution_is_read_from_the_registry_and_proposed():
             impact="Builds the S-1 level 1 Pipeline in retention")]),
         message(content="I proposed the S-1 level 1 Pipeline for your confirmation."))
     answer = run(client, fake, message="Build S-1 level 1 in retention from customers.")
-    assert "prompt v6" in client.seen[0][0]["content"]
+    assert "prompt v7" in client.seen[0][0]["content"]
     detail = client.seen[2][-1]["content"]
     assert "Customer retention" in detail
     assert "minimum_level" in detail

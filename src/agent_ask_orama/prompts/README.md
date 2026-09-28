@@ -3,6 +3,8 @@
 Each prompt behavior change creates a new version; previous versions remain for trace history.
 `agent.py` selects the active version through `PROMPT_VERSION`.
 
+- `v7.md` adds live App and build reads, retained event diagnosis, ApplicationAgent app turns and
+  proposal-only App actions.
 - `v6.md` adds a fresh solution-registry read for every solution turn, current `get_solution`
   details, honest preview and sketch language, policy and evidence reads, proposal-only policy
   changes, and the older-engine fallback to methodologies.

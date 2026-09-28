@@ -23,10 +23,11 @@ from typing import Any
 import httpx
 from openai import OpenAI
 
-PROMPT_VERSION = "v6"
+PROMPT_VERSION = "v7"
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_ROUNDS = 10
 OLD_ENGINE_ISSUE = "zetta#1061"
+APPLICATION_AGENT = "agent-application"
 
 SOLUTION_READ_CAPABILITIES = frozenset({
     "get_solution",
@@ -365,9 +366,11 @@ TOOLS = [
         "name": "delegate",
         "description": "Hand a request to another agent and get its answer: a specialized agent of "
                        "the Agent Library by key (agent-project builds and changes Pipelines, "
-                       "agent-autosuggest recommends Opportunities from a profile) or any agent "
-                       "the person built, by its id from list_agents. An agent that only runs "
-                       "unattended is started by proposing launch_agent instead.",
+                       "agent-autosuggest recommends Opportunities from a profile, and "
+                       "agent-application builds and changes Apps) or any agent the person built, "
+                       "by its id from list_agents. ApplicationAgent turns are sent to lake with "
+                       "kind app. An agent that only runs unattended is started by proposing "
+                       "launch_agent instead.",
         "parameters": {"type": "object", "properties": {
             "agent": {"type": "string"}, "request": {"type": "string"},
             "context": {"type": "object"}}, "required": ["agent", "request"]}}},
@@ -491,14 +494,22 @@ def handle(name: str, arguments: dict[str, Any], index: dict[str, Capability], t
     """One tool call. Reads run; proposals are recorded, never run; delegation goes through lake."""
     if name == "delegate":
         agent, request = arguments.get("agent", ""), arguments.get("request", "")
-        body = lake.call("agent_turn", {"customer_id": turn.customer_id, "agent": agent,
-                                        "message": request,
-                                        "context": arguments.get("context") or {}}, read=False)
+        kind = "app" if agent == APPLICATION_AGENT else None
+        payload = {
+            "customer_id": turn.customer_id,
+            "agent": agent,
+            "message": request,
+            "context": arguments.get("context") or {},
+        }
+        if kind is not None:
+            payload["kind"] = kind
+        body = lake.call("agent_turn", payload, read=False)
         task_id = (body.get("value") or {}).get("task_id") if body.get("ok") else None
         if task_id:
             # A library agent answers on lake's agent bus (lake#269): follow its task.
             body = follow(lake, turn.customer_id, task_id)
-        answer.delegations.append({"agent": agent, "request": request, "ok": bool(body.get("ok")),
+        answer.delegations.append({"agent": agent, "kind": kind, "request": request,
+                                   "ok": bool(body.get("ok")),
                                    "answer": body.get("value") if body.get("ok") else None,
                                    "error": (body.get("error") or {}).get("message")})
         return observation(body)
