@@ -23,9 +23,10 @@ from typing import Any
 import httpx
 from openai import OpenAI
 
-PROMPT_VERSION = "v4"
+PROMPT_VERSION = "v5"
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_ROUNDS = 10
+OLD_ENGINE_ISSUE = "zetta#1061"
 
 # Never offered, whatever the OpenAPI lists: signing in, recovering accounts and minting
 # credentials are ceremonies a person performs, not something an agent proposes.
@@ -70,6 +71,107 @@ class Answer:
     def as_dict(self) -> dict[str, Any]:
         return {"reply": self.reply, "reads": self.reads, "proposals": self.proposals,
                 "delegations": self.delegations, "rounds": self.rounds}
+
+
+@dataclass
+class MethodologyCatalog:
+    """The methodology registry observed during this turn."""
+
+    methodologies: dict[str, dict[str, Any]] = field(default_factory=dict)
+    loaded: bool = False
+    old_engine: bool = False
+
+    def observe(self, payload: dict[str, Any], body: dict[str, Any]) -> bool:
+        """Record a list_methodologies result and return whether this was that read."""
+        if payload.get("capability") != "list_methodologies":
+            return False
+        error = body.get("error") or {}
+        if not body.get("ok") and error.get("code") == "unknown_capability":
+            self.methodologies = {
+                "M-1": {
+                    "id": "M-1",
+                    "name": "Churn / GBDT classification",
+                    "runnable": True,
+                    "partial": False,
+                    "issue": None,
+                }
+            }
+            self.loaded = True
+            self.old_engine = True
+            return True
+        value = body.get("value") or {}
+        items = value.get("methodologies") if isinstance(value, dict) else None
+        if body.get("ok") and isinstance(items, list):
+            self.methodologies = {
+                item["id"]: item
+                for item in items
+                if isinstance(item, dict) and isinstance(item.get("id"), str)
+            }
+            self.loaded = True
+            self.old_engine = False
+        return True
+
+    def fallback_observation(self) -> str:
+        return json.dumps({
+            "methodologies": list(self.methodologies.values()),
+            "compatibility": (
+                "This workspace engine predates list_methodologies. Only M-1 runs; "
+                f"registry support is tracked by {OLD_ENGINE_ISSUE}."
+            ),
+        })
+
+    def refusal(self, methodology: str) -> str | None:
+        """Explain why a named methodology cannot be proposed, or allow it."""
+        if not self.loaded:
+            return (
+                "FAILED: methodology_registry_required Read workspace_query "
+                "list_methodologies at the start of this turn before proposing a methodology."
+            )
+        item = self.methodologies.get(methodology)
+        if item is not None and item.get("runnable"):
+            return None
+        if self.old_engine:
+            return unsupported(methodology, "this workspace engine only runs M-1",
+                               OLD_ENGINE_ISSUE)
+        if item is None:
+            runnable = sorted(key for key, value in self.methodologies.items()
+                              if value.get("runnable"))
+            return (f"FAILED: not_supported {methodology} is not in this engine's methodology "
+                    f"registry. Runnable methodologies: {', '.join(runnable) or 'none'}.")
+        name = str(item.get("name") or methodology)
+        issue = str(item.get("issue") or "")
+        return unsupported(methodology, name, issue)
+
+
+def issue_url(issue: str) -> str:
+    if issue.startswith("zetta#") and issue.removeprefix("zetta#").isdigit():
+        return "https://github.com/oramasearch/zetta/issues/" + issue.removeprefix("zetta#")
+    return ""
+
+
+def unsupported(methodology: str, name: str, issue: str) -> str:
+    issue_text = f"; tracked by {issue}"
+    url = issue_url(issue)
+    if url:
+        issue_text += f" ({url})"
+    if not issue:
+        issue_text = ""
+    return f"FAILED: not_supported {name} ({methodology}) is not supported yet{issue_text}."
+
+
+def named_methodologies(value: Any) -> list[str]:
+    """Find methodology identifiers in a proposed nested input."""
+    found: list[str] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key == "methodology" and isinstance(item, str) and item:
+                found.append(item)
+            else:
+                found.extend(named_methodologies(item))
+    elif isinstance(value, list):
+        for item in value:
+            found.extend(named_methodologies(item))
+    return found
 
 
 def capability_index(openapi: dict[str, Any]) -> dict[str, Capability]:
@@ -202,6 +304,7 @@ def answer_turn(turn: Turn, history: list[dict[str, Any]], client: OpenAI, model
     owned = lake is None
     lake = lake or Lake(turn)
     answer = Answer()
+    methodologies = MethodologyCatalog()
     try:
         index = capability_index(lake.openapi())
         if not history:
@@ -222,7 +325,8 @@ def answer_turn(turn: Turn, history: list[dict[str, Any]], client: OpenAI, model
                     arguments = json.loads(call.function.arguments or "{}")
                 except json.JSONDecodeError:
                     arguments = {}
-                content = handle(call.function.name, arguments, index, turn, lake, answer)
+                content = handle(call.function.name, arguments, index, turn, lake, answer,
+                                 methodologies)
                 history.append({"role": "tool", "tool_call_id": call.id, "content": content})
         answer.reply = "I stopped before finishing: this turn reached its limit of tool rounds."
         return answer
@@ -257,7 +361,7 @@ def follow(lake: Lake, customer_id: str, task_id: str, budget: float = FOLLOW_SE
 
 
 def handle(name: str, arguments: dict[str, Any], index: dict[str, Capability], turn: Turn,
-           lake: Lake, answer: Answer) -> str:
+           lake: Lake, answer: Answer, methodologies: MethodologyCatalog) -> str:
     """One tool call. Reads run; proposals are recorded, never run; delegation goes through lake."""
     if name == "delegate":
         agent, request = arguments.get("agent", ""), arguments.get("request", "")
@@ -284,10 +388,18 @@ def handle(name: str, arguments: dict[str, Any], index: dict[str, Capability], t
         body = lake.call(capability.name, payload, read=capability.get)
         answer.reads.append({"capability": capability.name, "input": payload,
                              "ok": bool(body.get("ok"))})
+        methodology_read = capability.name == "workspace_query" and methodologies.observe(
+            payload, body)
+        if methodology_read and methodologies.old_engine:
+            return methodologies.fallback_observation()
         return observation(body)
     if name == "lake_propose":
         if capability.read:
             return f"{capability.name} only reads; call it with lake_read instead."
+        for methodology in named_methodologies(payload):
+            refusal = methodologies.refusal(methodology)
+            if refusal:
+                return refusal
         proposal = {"capability": capability.name, "input": payload,
                     "impact": arguments.get("impact", "")}
         answer.proposals.append(proposal)
