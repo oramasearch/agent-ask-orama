@@ -12,6 +12,8 @@ Graded deterministically, never by a judge:
   required inputs are the space alone, so they can be done as asked);
 - a **Pipeline** request must delegate to `agent-project`, an **opportunity** request to
   `agent-autosuggest`;
+- a **methodology** question must read `list_methodologies`, affirm runnable support, or decline
+  unsupported work with its issue;
 - every proposal and read must name a capability that exists (no invented names).
 
 Run against a real lake as a real person:
@@ -36,7 +38,17 @@ from typing import Any
 import httpx
 from openai import OpenAI
 
-from agent_ask_orama.agent import Capability, Lake, Turn, answer_turn, capability_index
+from agent_ask_orama.agent import (
+    OLD_ENGINE_ISSUE,
+    Capability,
+    Lake,
+    MethodologyCatalog,
+    Turn,
+    answer_turn,
+    capability_index,
+    issue_url,
+    with_customer,
+)
 
 DELEGATIONS = [
     ("agent-project", "Build me a Pipeline that predicts which accounts will churn next quarter."),
@@ -45,11 +57,16 @@ DELEGATIONS = [
     ("agent-autosuggest", "Which opportunities does my data support? Rank them."),
 ]
 
+METHODOLOGY_QUESTIONS = [
+    ("M-3", "Can you segment my customers?"),
+    ("M-14", "Can you do speech analytics?"),
+]
+
 
 @dataclass
 class Case:
     id: str
-    kind: str       # change | read | clarify | delegate
+    kind: str       # change | read | clarify | delegate | methodology
     message: str
     expect: str     # the capability, or the agent key
 
@@ -88,11 +105,14 @@ def generate(index: dict[str, Capability], changes: int = 8, reads: int = 6,
         cases.append(Case(f"clarify-{name}", "clarify", f"Please {asked(name)}.", name))
     for number, (agent, message) in enumerate(DELEGATIONS):
         cases.append(Case(f"delegate-{agent}-{number}", "delegate", message, agent))
+    for methodology, message in METHODOLOGY_QUESTIONS:
+        cases.append(Case(f"methodology-{methodology.lower()}", "methodology", message,
+                          methodology))
     return cases
 
 
 def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
-          writes_sent: list[str]) -> Graded:
+          writes_sent: list[str], methodologies: MethodologyCatalog | None = None) -> Graded:
     reasons: list[str] = []
     named = [p["capability"] for p in answer["proposals"]] + [r["capability"]
                                                                for r in answer["reads"]]
@@ -119,18 +139,69 @@ def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
     elif case.kind == "delegate":
         if case.expect not in [d["agent"] for d in answer["delegations"]]:
             reasons.append(f"did not delegate to {case.expect}")
+    elif case.kind == "methodology":
+        methodology_read = any(
+            read.get("capability") == "workspace_query"
+            and (read.get("input") or {}).get("capability") == "list_methodologies"
+            for read in answer["reads"]
+        )
+        if not methodology_read:
+            reasons.append("did not read list_methodologies")
+        if methodologies is None or not methodologies.loaded:
+            reasons.append("eval did not load the methodology registry")
+        else:
+            item = methodologies.methodologies.get(case.expect)
+            runnable = bool(item and item.get("runnable"))
+            reply = answer["reply"].lower()
+            negative = any(phrase in reply for phrase in (
+                "cannot",
+                "can't",
+                "does not support",
+                "doesn't support",
+                "not available",
+                "not runnable",
+                "not supported",
+            ))
+            if runnable:
+                affirmative = any(word in reply for word in ("yes", "can", "runnable",
+                                                              "supported"))
+                if not affirmative or negative:
+                    reasons.append(f"did not affirm runnable {case.expect}")
+            else:
+                issue = str((item or {}).get("issue") or OLD_ENGINE_ISSUE)
+                if not negative:
+                    reasons.append(f"did not decline unsupported {case.expect}")
+                if issue.lower() not in reply and issue_url(issue).lower() not in reply:
+                    reasons.append(f"did not name {issue} for unsupported {case.expect}")
     return Graded(case, not reasons, reasons, answer)
+
+
+def read_methodologies(lake: Lake, index: dict[str, Capability],
+                       customer_id: str) -> MethodologyCatalog:
+    """Read the live registry once so methodology evals know the expected answer."""
+    catalog = MethodologyCatalog()
+    capability = index.get("workspace_query")
+    if capability is None:
+        return catalog
+    payload = with_customer(capability, {"capability": "list_methodologies", "input": {}},
+                            customer_id)
+    result = lake.call(capability.name, payload, read=capability.get)
+    catalog.observe(payload, result)
+    return catalog
 
 
 class Recording(httpx.BaseTransport):
     """The real transport, noting every write lake receives (proposals must send none)."""
 
-    def __init__(self) -> None:
+    def __init__(self, index: dict[str, Capability]) -> None:
         self.inner = httpx.HTTPTransport()
         self.writes: list[str] = []
+        self.read_posts = {f"/v1/{capability.name}" for capability in index.values()
+                           if capability.read and not capability.get}
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
-        if request.method == "POST" and request.url.path != "/v1/agent_turn":
+        read_posts = self.read_posts | {"/v1/agent_turn"}
+        if request.method == "POST" and request.url.path not in read_posts:
             self.writes.append(request.url.path)
         return self.inner.handle_request(request)
 
@@ -144,11 +215,12 @@ def main() -> int:
                 customer_id=os.environ.get("CUSTOMER_ID", ""))
     probe = Lake(base)
     index = capability_index(probe.openapi())
+    methodologies = read_methodologies(probe, index, base.customer_id)
     probe.close()
     client = OpenAI()
     results: list[Graded] = []
     for case in generate(index):
-        recording = Recording()
+        recording = Recording(index)
         turn = Turn(**{**asdict(base), "message": case.message})
         lake = Lake(turn, transport=recording)
         try:
@@ -158,7 +230,7 @@ def main() -> int:
                       "delegations": [], "rounds": 0}
         finally:
             lake.close()
-        results.append(grade(case, answer, index, recording.writes))
+        results.append(grade(case, answer, index, recording.writes, methodologies))
     passed = sum(result.passed for result in results)
     args.out.mkdir(parents=True, exist_ok=True)
     stamp = date.today().isoformat()

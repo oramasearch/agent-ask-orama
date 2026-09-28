@@ -26,6 +26,8 @@ OPENAPI = {"paths": {
     # As lake serves it: a POST (its input is an object) that only reads.
     "/v1/workspace_query": {"post": {"summary": "Query a workspace", "x-lake-action": "read",
                                      "requestBody": body("customer_id", "capability")}},
+    "/v1/workspace_act": {"post": {"summary": "Act in a workspace",
+                                   "requestBody": body("customer_id", "capability", "input")}},
     "/v1/create_repository": {"post": {"summary": "Create a repository",
                                        "requestBody": body("customer_id", "name")}},
     "/v1/agent_turn": {"post": {"summary": "Talk to an agent",
@@ -34,11 +36,24 @@ OPENAPI = {"paths": {
     "/v1/repositories/{id}/sync/push": {"post": {"summary": "binary"}},
 }}
 
+METHODOLOGIES = [
+    {"id": "M-1", "name": "Tabular supervised", "runnable": True, "partial": False,
+     "issue": None},
+    {"id": "M-3", "name": "Segmentation / clustering", "runnable": True, "partial": False,
+     "issue": "zetta#1042"},
+    {"id": "M-14", "name": "Speech", "runnable": False, "partial": False,
+     "issue": "zetta#1053"},
+]
+
 
 class FakeLake:
-    def __init__(self) -> None:
+    def __init__(self, methodology_response=None) -> None:
         self.requests: list[httpx.Request] = []
         self.polls = 0
+        self.methodology_response = methodology_response or {
+            "ok": True,
+            "value": {"methodologies": METHODOLOGIES},
+        }
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -55,6 +70,9 @@ class FakeLake:
             if request.method != "POST":
                 return httpx.Response(405, json={"ok": False, "error": {
                     "code": "method_not_allowed", "message": "call it with POST"}})
+            sent = json.loads(request.content)
+            if sent.get("capability") == "list_methodologies":
+                return httpx.Response(200, json=self.methodology_response)
             return httpx.Response(200, json={"ok": True, "value": {"datasets": [
                 {"database": "datasets", "name": "accounts", "rows": 200}]}})
         if request.url.path == "/v1/agent_turn":
@@ -119,7 +137,7 @@ def run(client, fake, history=None, **overrides):
 def test_the_index_is_lakes_own_openapi_without_ceremonies():
     index = agent.capability_index(OPENAPI)
     assert set(index) == {"list_repositories", "identity", "get_repository", "workspace_query",
-                          "create_repository", "agent_turn"}
+                          "workspace_act", "create_repository", "agent_turn"}
     assert index["get_repository"].required == {"repository_id"}
     assert not index["list_repositories"].required, "the space is not a required input"
     assert index["list_repositories"].read and not index["create_repository"].read
@@ -204,7 +222,7 @@ def test_evals_are_generated_from_the_index_and_graded_by_rules():
     index = agent.capability_index(OPENAPI)
     cases = evals.generate(index, changes=2, reads=2, clarify=2)
     kinds = {case.kind for case in cases}
-    assert kinds == {"change", "read", "clarify", "delegate"}
+    assert kinds == {"change", "read", "clarify", "delegate", "methodology"}
     assert all(not index[c.expect].required for c in cases if c.kind in {"change", "read"}), \
         "a change or read case can be done as asked"
     change = next(case for case in cases if case.kind == "change")
@@ -228,6 +246,25 @@ def test_evals_are_generated_from_the_index_and_graded_by_rules():
     assert not evals.grade(clarify, guessed, index, []).passed, "a guessed id fails"
     silent = {**nothing, "reply": "Done."}
     assert not evals.grade(clarify, silent, index, []).passed
+
+    catalog = agent.MethodologyCatalog(
+        methodologies={item["id"]: item for item in METHODOLOGIES},
+        loaded=True,
+    )
+    methodology_read = {"capability": "workspace_query", "input": {
+        "capability": "list_methodologies", "input": {}}, "ok": True}
+    segmentation = next(case for case in cases if case.expect == "M-3")
+    supported = {**nothing, "reply": "Yes, M-3 segmentation is runnable.",
+                 "reads": [methodology_read]}
+    assert evals.grade(segmentation, supported, index, [], catalog).passed
+    speech = next(case for case in cases if case.expect == "M-14")
+    missing_issue = {**nothing, "reply": "Speech is not supported yet.",
+                     "reads": [methodology_read]}
+    assert not evals.grade(speech, missing_issue, index, [], catalog).passed
+    wrong_support = {**missing_issue, "reply": "Yes, speech is supported; see zetta#1053."}
+    assert not evals.grade(speech, wrong_support, index, [], catalog).passed
+    named_issue = {**missing_issue, "reply": "Speech is not supported yet; see zetta#1053."}
+    assert evals.grade(speech, named_issue, index, [], catalog).passed
 
 
 def test_a_read_that_takes_no_space_is_sent_without_one():
@@ -272,3 +309,64 @@ def test_a_post_that_only_reads_is_read_not_proposed():
     assert json.loads(sent[0].content)["capability"] == "list_datasets"
     assert answer.reads == [{"capability": "workspace_query", "input": {
         "customer_id": "c-1", "capability": "list_datasets", "input": {}}, "ok": True}]
+
+
+def test_a_runnable_methodology_can_be_proposed_after_reading_the_registry():
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="workspace_query", input={
+            "capability": "list_methodologies", "input": {}})]),
+        message(tool_calls=[call("lake_propose", capability="workspace_act", input={
+            "capability": "compile_intent",
+            "input": {"project": "segments", "intent": "segment customers",
+                      "methodology": "M-3"}},
+            impact="Recompiles segments as an M-3 Pipeline")]),
+        message(content="I proposed the runnable M-3 segmentation Pipeline."))
+    answer = run(client, fake, message="Can you segment my customers?")
+    assert "prompt v5" in client.seen[0][0]["content"]
+    assert answer.proposals == [{
+        "capability": "workspace_act",
+        "input": {
+            "customer_id": "c-1",
+            "capability": "compile_intent",
+            "input": {"project": "segments", "intent": "segment customers",
+                      "methodology": "M-3"},
+        },
+        "impact": "Recompiles segments as an M-3 Pipeline",
+    }]
+
+
+def test_an_unsupported_methodology_is_declined_with_its_issue():
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="workspace_query", input={
+            "capability": "list_methodologies", "input": {}})]),
+        message(tool_calls=[call("lake_propose", capability="workspace_act", input={
+            "capability": "compile_intent",
+            "input": {"project": "calls", "intent": "analyze speech",
+                      "methodology": "M-14"}},
+            impact="Recompiles calls as an M-14 Pipeline")]),
+        message(content="Speech analytics is not supported yet; see zetta#1053."))
+    answer = run(client, fake, message="Can you do speech analytics?")
+    assert not answer.proposals
+    assert "zetta#1053" in answer.reply
+    refusal = client.seen[2][-1]["content"]
+    assert "not_supported" in refusal
+    assert "https://github.com/oramasearch/zetta/issues/1053" in refusal
+    assert not any(request.url.path == "/v1/workspace_act" for request in fake.requests)
+
+
+def test_an_old_engine_falls_back_to_m1_only():
+    fake = FakeLake({
+        "ok": False,
+        "error": {"code": "unknown_capability", "message": "unknown list_methodologies"},
+    })
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="workspace_query", input={
+            "capability": "list_methodologies", "input": {}})]),
+        message(content="This older engine only runs M-1 churn / GBDT classification."))
+    answer = run(client, fake, message="Can you do speech analytics?")
+    assert answer.reply == "This older engine only runs M-1 churn / GBDT classification."
+    fallback = client.seen[1][-1]["content"]
+    assert "Only M-1 runs" in fallback
+    assert "zetta#1061" in fallback
