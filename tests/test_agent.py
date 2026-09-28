@@ -23,7 +23,9 @@ OPENAPI = {"paths": {
     "/v1/identity": {"get": {"summary": "This lake's identity", "parameters": []}},
     "/v1/get_repository": {"get": {"summary": "Get a repository", "parameters": CUSTOMER + [
         {"in": "query", "name": "repository_id", "required": True}]}},
-    "/v1/workspace_query": {"get": {"summary": "Query a workspace", "parameters": CUSTOMER}},
+    # As lake serves it: a POST (its input is an object) that only reads.
+    "/v1/workspace_query": {"post": {"summary": "Query a workspace", "x-lake-action": "read",
+                                     "requestBody": body("customer_id", "capability")}},
     "/v1/create_repository": {"post": {"summary": "Create a repository",
                                        "requestBody": body("customer_id", "name")}},
     "/v1/agent_turn": {"post": {"summary": "Talk to an agent",
@@ -36,6 +38,7 @@ OPENAPI = {"paths": {
 class FakeLake:
     def __init__(self) -> None:
         self.requests: list[httpx.Request] = []
+        self.polls = 0
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -48,10 +51,28 @@ class FakeLake:
                 return httpx.Response(400, json={"ok": False, "error": {
                     "code": "invalid_input", "message": "unexpected field customer_id"}})
             return httpx.Response(200, json={"ok": True, "value": {"id": "taap:lake"}})
+        if request.url.path == "/v1/workspace_query":
+            if request.method != "POST":
+                return httpx.Response(405, json={"ok": False, "error": {
+                    "code": "method_not_allowed", "message": "call it with POST"}})
+            return httpx.Response(200, json={"ok": True, "value": {"datasets": [
+                {"database": "datasets", "name": "accounts", "rows": 200}]}})
         if request.url.path == "/v1/agent_turn":
             sent = json.loads(request.content)
+            if sent["agent"] == "agent-project":
+                # A library agent: the turn is a task on lake's agent bus (lake#269).
+                return httpx.Response(200, json={"ok": True, "value": {
+                    "task_id": "t-1", "agent": "agent-project", "status": "pending"}})
             return httpx.Response(200, json={"ok": True, "value": {
                 "agent": sent["agent"], "reply": "built a churn Pipeline"}})
+        if request.url.path == "/v1/receive_agent_events":
+            self.polls += 1
+            status = "running" if self.polls < 2 else "succeeded"
+            answer = {"ok": True, "result": {"reply": "built a churn Pipeline"}}
+            return httpx.Response(200, json={"ok": True, "value": {
+                "events": [], "next_sequence": self.polls + 1,
+                "task": {"task_id": "t-1", "agent": "agent-project", "status": status,
+                         "answer": answer if status == "succeeded" else None}}})
         return httpx.Response(403, json={"ok": False, "error": {"code": "unauthorized",
                                                                 "message": "no"}})
 
@@ -142,6 +163,12 @@ def test_it_delegates_through_lake_and_reports_the_agents_answer():
     sent = json.loads(next(r for r in fake.requests if r.url.path == "/v1/agent_turn").content)
     assert sent == {"customer_id": "c-1", "agent": "agent-project", "message": "predict churn",
                     "context": {}}
+    # The subagent's task is followed on lake's agent bus until it finished.
+    polls = [r for r in fake.requests if r.url.path == "/v1/receive_agent_events"]
+    assert len(polls) == 2
+    assert polls[1].url.params["from_sequence"] == "2", "each poll continues where the last stopped"
+    assert answer.delegations[0]["answer"]["status"] == "succeeded"
+    assert answer.delegations[0]["answer"]["answer"]["result"]["reply"] == "built a churn Pipeline"
 
 
 def test_an_unknown_capability_is_an_observation():
@@ -215,3 +242,33 @@ def test_a_read_that_takes_no_space_is_sent_without_one():
     sent = next(r for r in fake.requests if r.url.path == "/v1/identity")
     assert "customer_id" not in sent.url.params
     assert answer.reads and answer.reply == "This lake is taap:lake."
+
+
+def test_a_subagent_still_working_when_the_budget_ends_is_reported_as_working():
+    fake = FakeLake()
+    fake.polls = -100  # it never finishes within this test
+    lake = agent.Lake(agent.Turn(message="m", lake_url="http://lake", lake_token="k",
+                                 customer_id="c-1", page={}, conversation_id="x"),
+                      transport=httpx.MockTransport(fake))
+    ticks = iter([0.0, 5.0, 10.0])
+    followed = agent.follow(lake, "c-1", "t-1", budget=8.0, clock=lambda: next(ticks))
+    assert followed["ok"] and followed["value"]["status"] == "running"
+
+
+def test_a_post_that_only_reads_is_read_not_proposed():
+    """UX review 2026-09-27: workspace_query (a POST) was taken for a change, so Ask Orama never
+    read the workspace and guessed SQL instead."""
+    index = agent.capability_index(OPENAPI)
+    assert index["workspace_query"].read and not index["workspace_query"].get
+    assert not index["create_repository"].read
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="workspace_query",
+                                 input={"capability": "list_datasets", "input": {}})]),
+        message(content="You have one dataset, accounts (200 rows)."))
+    answer = run(client, fake)
+    sent = [r for r in fake.requests if r.url.path == "/v1/workspace_query"]
+    assert sent and sent[0].method == "POST"
+    assert json.loads(sent[0].content)["capability"] == "list_datasets"
+    assert answer.reads == [{"capability": "workspace_query", "input": {
+        "customer_id": "c-1", "capability": "list_datasets", "input": {}}, "ok": True}]
