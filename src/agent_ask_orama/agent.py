@@ -23,11 +23,21 @@ from typing import Any
 import httpx
 from openai import OpenAI
 
-PROMPT_VERSION = "v7"
+PROMPT_VERSION = "v8"
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_ROUNDS = 10
 OLD_ENGINE_ISSUE = "zetta#1061"
 APPLICATION_AGENT = "agent-application"
+EXPERIMENTS_AGENT = "agent-experiments"
+EXPERIMENT_KINDS = frozenset({
+    "experiment",
+    "experiment_status",
+    "experiment_explain",
+})
+EXPERIMENT_CONFIRMATION_FIELDS = frozenset({
+    "confirmed_proposal",
+    "confirmed_promotion",
+})
 
 SOLUTION_READ_CAPABILITIES = frozenset({
     "get_solution",
@@ -366,13 +376,16 @@ TOOLS = [
         "name": "delegate",
         "description": "Hand a request to another agent and get its answer: a specialized agent of "
                        "the Agent Library by key (agent-project builds and changes Pipelines, "
-                       "agent-autosuggest recommends Opportunities from a profile, and "
-                       "agent-application builds and changes Apps) or any agent the person built, "
-                       "by its id from list_agents. ApplicationAgent turns are sent to lake with "
-                       "kind app. An agent that only runs unattended is started by proposing "
-                       "launch_agent instead.",
+                       "agent-autosuggest recommends Opportunities from a profile, "
+                       "agent-application builds and changes Apps, and agent-experiments designs, "
+                       "tracks, and explains training studies) or any agent the person built, by "
+                       "its id from list_agents. ApplicationAgent turns use kind app. "
+                       "ExperimentsAgent turns require kind experiment, experiment_status, or "
+                       "experiment_explain. An agent that only runs unattended is started by "
+                       "proposing launch_agent instead.",
         "parameters": {"type": "object", "properties": {
             "agent": {"type": "string"}, "request": {"type": "string"},
+            "kind": {"type": "string", "enum": sorted(EXPERIMENT_KINDS)},
             "context": {"type": "object"}}, "required": ["agent", "request"]}}},
 ]
 
@@ -494,12 +507,27 @@ def handle(name: str, arguments: dict[str, Any], index: dict[str, Capability], t
     """One tool call. Reads run; proposals are recorded, never run; delegation goes through lake."""
     if name == "delegate":
         agent, request = arguments.get("agent", ""), arguments.get("request", "")
-        kind = "app" if agent == APPLICATION_AGENT else None
+        context = arguments.get("context") or {}
+        kind = None
+        if agent == APPLICATION_AGENT:
+            kind = "app"
+        elif agent == EXPERIMENTS_AGENT:
+            kind = arguments.get("kind")
+            if kind not in EXPERIMENT_KINDS:
+                expected = ", ".join(sorted(EXPERIMENT_KINDS))
+                return f"FAILED: ExperimentsAgent requires one of these turn kinds: {expected}."
+            confirmation_fields = sorted(EXPERIMENT_CONFIRMATION_FIELDS.intersection(context))
+            if confirmation_fields:
+                return (
+                    "FAILED: experiment_confirmation_owned_by_lake Ask Orama cannot send "
+                    f"{', '.join(confirmation_fields)}. Lake sends the reviewed object only after "
+                    "the person confirms it."
+                )
         payload = {
             "customer_id": turn.customer_id,
             "agent": agent,
             "message": request,
-            "context": arguments.get("context") or {},
+            "context": context,
         }
         if kind is not None:
             payload["kind"] = kind

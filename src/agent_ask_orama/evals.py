@@ -12,6 +12,9 @@ Graded deterministically, never by a judge:
   required inputs are the space alone, so they can be done as asked);
 - a **Pipeline** request must delegate to `agent-project`, an **opportunity** request to
   `agent-autosuggest`, and an **App** request to `agent-application` with kind `app`;
+- **training**, **tuning** and **best-model** requests must delegate to `agent-experiments` with
+  kind `experiment`; progress requests use `experiment_status`, and divergence questions use
+  `experiment_explain`;
 - an **App list** request must call `list_apps`;
 - an **App health** request must call `get_app` and `receive_app_events`;
 - a **build failure** request must call `list_builds`, `get_build`, and `receive_build_events`;
@@ -65,6 +68,14 @@ DELEGATIONS = [
     ("agent-application", "Change App app-1 to show account risk drivers."),
 ]
 
+EXPERIMENT_QUESTIONS = [
+    ("experiment-train", "experiment", "Train a model on the accounts dataset."),
+    ("experiment-tune", "experiment", "Tune my churn model."),
+    ("experiment-best-model", "experiment", "Find the best model for customer retention."),
+    ("experiment-progress", "experiment_status", "How is study study-7 progressing?"),
+    ("experiment-diverged", "experiment_explain", "Why did run run-4 diverge?"),
+]
+
 METHODOLOGY_QUESTIONS = [
     ("M-3", "Can you segment my customers?"),
     ("M-14", "Can you do speech analytics?"),
@@ -79,7 +90,7 @@ SOLUTION_QUESTIONS = [
 @dataclass
 class Case:
     id: str
-    # change | read | clarify | delegate | app_* | build_failure | methodology | solution
+    # change | read | clarify | delegate | experiment* | app_* | methodology | solution
     kind: str
     message: str
     expect: str     # the capability, or the agent key
@@ -119,6 +130,8 @@ def generate(index: dict[str, Capability], changes: int = 8, reads: int = 6,
         cases.append(Case(f"clarify-{name}", "clarify", f"Please {asked(name)}.", name))
     for number, (agent, message) in enumerate(DELEGATIONS):
         cases.append(Case(f"delegate-{agent}-{number}", "delegate", message, agent))
+    for case_id, turn_kind, message in EXPERIMENT_QUESTIONS:
+        cases.append(Case(case_id, turn_kind, message, "agent-experiments"))
     cases.extend([
         Case("apps-list", "app_list", "What Apps do I have?", "list_apps"),
         Case("app-health", "app_health", "Is App app-1 healthy?", "app-1"),
@@ -168,6 +181,23 @@ def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
             reasons.append(f"did not delegate to {case.expect}")
         elif case.expect == "agent-application" and matching[0].get("kind") != "app":
             reasons.append("did not delegate ApplicationAgent work with kind app")
+    elif case.kind in {"experiment", "experiment_status", "experiment_explain"}:
+        matching = [d for d in answer["delegations"] if d["agent"] == case.expect]
+        if not matching:
+            reasons.append("did not delegate to agent-experiments")
+        elif matching[0].get("kind") != case.kind:
+            reasons.append(f"did not use ExperimentsAgent turn kind {case.kind}")
+        reply = answer["reply"].lower()
+        if case.kind == "experiment":
+            if not any(word in reply for word in ("proposal", "proposed")):
+                reasons.append("did not summarize the study as a proposal")
+            if not any(word in reply for word in ("confirm", "review")):
+                reasons.append("did not tell the person to review or confirm the proposal")
+        elif case.kind == "experiment_status":
+            if not any(word in reply for word in ("study", "trial", "progress", "budget")):
+                reasons.append("did not summarize study progress")
+        elif "diverg" not in reply:
+            reasons.append("did not summarize the divergence explanation")
     elif case.kind == "app_list":
         require_reads(answer, ["list_apps"], reasons)
     elif case.kind == "app_health":

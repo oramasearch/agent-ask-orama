@@ -11,6 +11,9 @@ and `docs/agents/scaffold.md` first; the org rules in `oramasearch/orama-bridge`
 - **The vocabulary is derived** from lake's OpenAPI at every turn; never hand-write a capability list.
 - **App and build facts are live.** Read App and build state with their retained events. Building
   or changing an App goes to `agent-application` as an `app` turn. App actions stay proposals.
+- **Training experiments go to ExperimentsAgent.** Design uses an `experiment` turn, live progress
+  uses `experiment_status`, and results or divergence use `experiment_explain`. Ask Orama reports
+  the proposal or result; only lake can forward a person's confirmed proposal or promotion.
 - **Solution facts are live.** Read `list_solutions` on every solution turn, then `get_solution` or
   the Project's policy, experiment, ledger, monitor and measured readout. Propose policy changes;
   never apply them. Never promise returns, prices or odds.
