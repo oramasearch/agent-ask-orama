@@ -401,7 +401,7 @@ def test_apps_are_listed_from_lake():
         message(tool_calls=[call("lake_read", capability="list_apps")]),
         message(content="You have one App, risk-console, and it is running."))
     answer = run(client, fake, message="What Apps do I have?")
-    assert "prompt v8" in client.seen[0][0]["content"]
+    assert "prompt v9" in client.seen[0][0]["content"]
     assert answer.reads == [{
         "capability": "list_apps",
         "input": {"customer_id": "c-1"},
@@ -834,7 +834,7 @@ def test_a_runnable_methodology_can_be_proposed_after_reading_the_registry():
             impact="Recompiles segments as an M-3 Pipeline")]),
         message(content="I proposed the runnable M-3 segmentation Pipeline."))
     answer = run(client, fake, message="Can you segment my customers?")
-    assert "prompt v8" in client.seen[0][0]["content"]
+    assert "prompt v9" in client.seen[0][0]["content"]
     assert answer.proposals == [{
         "capability": "workspace_act",
         "input": {
@@ -897,7 +897,7 @@ def test_a_runnable_solution_is_read_from_the_registry_and_proposed():
             impact="Builds the S-1 level 1 Pipeline in retention")]),
         message(content="I proposed the S-1 level 1 Pipeline for your confirmation."))
     answer = run(client, fake, message="Build S-1 level 1 in retention from customers.")
-    assert "prompt v8" in client.seen[0][0]["content"]
+    assert "prompt v9" in client.seen[0][0]["content"]
     detail = client.seen[2][-1]["content"]
     assert "Customer retention" in detail
     assert "minimum_level" in detail
@@ -1062,3 +1062,16 @@ def test_an_unknown_solution_operation_is_reported_as_not_deployed():
     answer = run(client, fake, message="How is retention's monitor?")
     assert "not deployed yet" in answer.reply
     assert "unknown_capability" in client.seen[2][-1]["content"]
+
+
+def test_the_prompt_offers_no_internal_agent() -> None:
+    # lake#451: Eval Generator and the corpus generators are Orama's own tooling, not agents a
+    # person delegates to; lake hides them from Talk to and the prompt must not offer them either.
+    from agent_ask_orama.agent import PROMPT_VERSION
+    from pathlib import Path
+
+    import agent_ask_orama
+
+    prompt = (Path(agent_ask_orama.__file__).parent / "prompts" / f"{PROMPT_VERSION}.md").read_text()
+    for internal in ("agent-eval-generator", "agent-autosuggest-corpus", "agent-project-corpus"):
+        assert internal not in prompt
