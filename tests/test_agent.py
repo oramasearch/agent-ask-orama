@@ -1197,3 +1197,36 @@ def test_the_prompt_offers_no_internal_agent() -> None:
     prompt = (Path(agent_ask_orama.__file__).parent / "prompts" / f"{PROMPT_VERSION}.md").read_text()
     for internal in ("agent-eval-generator", "agent-autosuggest-corpus", "agent-project-corpus"):
         assert internal not in prompt
+
+
+def openai_answer(content: str) -> dict:
+    return {"id": "chatcmpl-1", "object": "chat.completion", "created": 0, "model": "gpt-5.5",
+            "choices": [{"index": 0, "finish_reason": "stop",
+                         "message": {"role": "assistant", "content": content}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}}
+
+
+def test_a_turn_calls_its_model_through_lakes_gateway_with_the_turns_key(tmp_path, monkeypatch):
+    """lake#248: the model is lake's `/openai/v1`, with the turn's own key, never a provider key."""
+    from agent_ask_orama import model
+    seen: list[httpx.Request] = []
+
+    def gateway(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=openai_answer("Hello."))
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(service, "gateway_client", lambda url, token: model.gateway_client(
+        url, token, http_client=httpx.Client(transport=httpx.MockTransport(gateway))))
+    state = service.State()
+    state.trace_dir = tmp_path
+    fake = FakeLake()
+    result = service.run_turn({"message": "hi", "lake_token": "lat.task.secret",
+                               "lake_url": "http://lake:8080/"}, state, None,
+                              agent.Lake(turn(), transport=httpx.MockTransport(fake)))
+    assert result["ok"], result
+    assert result["reply"] == "Hello."
+    assert [str(request.url) for request in seen] == ["http://lake:8080/openai/v1/chat/completions"]
+    assert seen[0].headers["authorization"] == "Bearer lat.task.secret"
+    assert json.loads(seen[0].content)["model"] == state.model
+    assert model.gateway_url("http://lake/") == "http://lake/openai/v1"
