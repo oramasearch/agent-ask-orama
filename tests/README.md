@@ -12,6 +12,12 @@ Its experiment coverage routes train, tune and best-model requests to `experimen
 `experiment_status`, and divergence questions to `experiment_explain`; it also proves Ask Orama
 cannot forward confirmed proposal or promotion objects and grades the fixed experiment evals.
 
-`test_lake_bus.py` covers task receipt and result publication on lake's agent bus.
+Its model coverage (agent-ask-orama#14) answers "which model scored best" with one
+`compare_models` read ranked by held-out AUC, names an empty project and a failed read, ends a turn
+out of tool rounds as incomplete with an honest partial answer (and as `ok: false` from the
+service), and grades the model-score eval.
+
+`test_lake_bus.py` covers task receipt and result publication on lake's agent bus, and publishes an
+unfinished turn as `failed` with its partial answer.
 
 Run all tests with `uv run pytest`.

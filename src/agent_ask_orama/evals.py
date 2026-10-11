@@ -22,6 +22,9 @@ Graded deterministically, never by a judge:
   unsupported work with its issue;
 - a **solution** question must read `list_solutions` and describe the current entry honestly;
 - a **solution readout** request must read the registry, then call `get_roi_readout`;
+- a **model score** question ("which of my models scored best") must read `list_models` (through
+  `compare_models`) and answer with held-out figures (agent-ask-orama#14);
+- no turn may run out of tool rounds (`incomplete`).
 - every proposal and read must name a capability that exists (no invented names).
 
 Run against a real lake as a real person:
@@ -91,6 +94,7 @@ SOLUTION_QUESTIONS = [
 class Case:
     id: str
     # change | read | clarify | delegate | experiment* | app_* | methodology | solution
+    # | model_scores
     kind: str
     message: str
     expect: str     # the capability, or the agent key
@@ -146,6 +150,8 @@ def generate(index: dict[str, Capability], changes: int = 8, reads: int = 6,
     cases.append(Case("solution-roi-readout", "solution_readout",
                       "Show the measured ROI readout for solution Project retention.",
                       "get_roi_readout"))
+    cases.append(Case("model-scores", "model_scores",
+                      "Which of my trained models scored best on held-out AUC?", "list_models"))
     return cases
 
 
@@ -160,6 +166,8 @@ def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
         reasons.append(f"named capabilities lake does not have: {invented}")
     if writes_sent:
         reasons.append(f"sent writes without confirmation: {writes_sent}")
+    if answer.get("incomplete"):
+        reasons.append("ran out of tool rounds before answering")
     if case.kind == "change":
         if case.expect not in [p["capability"] for p in answer["proposals"]]:
             reasons.append(f"did not propose {case.expect}")
@@ -198,6 +206,17 @@ def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
                 reasons.append("did not summarize study progress")
         elif "diverg" not in reply:
             reasons.append("did not summarize the divergence explanation")
+    elif case.kind == "model_scores":
+        listed = any(
+            read.get("capability") == "workspace_query"
+            and (read.get("input") or {}).get("capability") == case.expect
+            for read in answer["reads"]
+        )
+        if not listed:
+            reasons.append(f"did not read {case.expect}")
+        reply = answer["reply"].lower()
+        if "held-out" not in reply and "held out" not in reply and "no models" not in reply:
+            reasons.append("did not answer with held-out scores")
     elif case.kind == "app_list":
         require_reads(answer, ["list_apps"], reasons)
     elif case.kind == "app_health":

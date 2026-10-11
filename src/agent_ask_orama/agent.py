@@ -23,7 +23,7 @@ from typing import Any
 import httpx
 from openai import OpenAI
 
-PROMPT_VERSION = "v9"
+PROMPT_VERSION = "v10"
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_ROUNDS = 10
 OLD_ENGINE_ISSUE = "zetta#1061"
@@ -95,10 +95,14 @@ class Answer:
     proposals: list[dict[str, Any]] = field(default_factory=list)
     delegations: list[dict[str, Any]] = field(default_factory=list)
     rounds: int = 0
+    # The turn ran out of tool rounds (agent-ask-orama#14): `reply` is an honest partial answer,
+    # and the turn ends as failed, never as a success.
+    incomplete: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {"reply": self.reply, "reads": self.reads, "proposals": self.proposals,
-                "delegations": self.delegations, "rounds": self.rounds}
+                "delegations": self.delegations, "rounds": self.rounds,
+                "incomplete": self.incomplete}
 
 
 @dataclass
@@ -373,6 +377,17 @@ TOOLS = [
             "capability": {"type": "string"}, "input": {"type": "object"},
             "impact": {"type": "string"}}, "required": ["capability", "input", "impact"]}}},
     {"type": "function", "function": {
+        "name": "compare_models",
+        "description": "Every trained model in the workspace (or one project's) with its "
+                       "held-out scores, best first, in one call: answers which model scored "
+                       "best, how two runs compare, or what a model scored. Held-out figures "
+                       "(held_out_auc, held_out_accuracy, held_out_log_loss, held_out_rmse...) "
+                       "come from rows the model never trained on; a model without them has "
+                       "only in-sample figures, which flatter it.",
+        "parameters": {"type": "object", "properties": {
+            "project": {"type": "string",
+                        "description": "a project's name or id; omit for every project"}}}}},
+    {"type": "function", "function": {
         "name": "delegate",
         "description": "Hand a request to another agent and get its answer: a specialized agent of "
                        "the Agent Library by key (agent-project builds and changes Pipelines, "
@@ -469,11 +484,114 @@ def answer_turn(turn: Turn, history: list[dict[str, Any]], client: OpenAI, model
                 content = handle(call.function.name, arguments, index, turn, lake, answer,
                                  methodologies, solutions)
                 history.append({"role": "tool", "tool_call_id": call.id, "content": content})
-        answer.reply = "I stopped before finishing: this turn reached its limit of tool rounds."
+        answer.incomplete = True
+        answer.reply = partial_answer(client, model, history)
         return answer
     finally:
         if owned:
             lake.close()
+
+
+OUT_OF_ROUNDS = (
+    "You have used every tool round this turn allows, so you cannot read anything more. Answer "
+    "now, without tools. Begin with: \"I did not finish this.\" Then say what you found, quoting "
+    "only figures from tool results above, and what is still unknown and which read would answer "
+    "it. Never present a guess as the answer."
+)
+OUT_OF_ROUNDS_FALLBACK = (
+    "I did not finish this: the turn used every tool round it allows before I had an answer. "
+    "Ask again, more narrowly (for example, name the project or run)."
+)
+
+
+def partial_answer(client: OpenAI, model: str, history: list[dict[str, Any]]) -> str:
+    """An honest partial answer when the rounds ran out: what was found, what was not."""
+    history.append({"role": "system", "content": OUT_OF_ROUNDS})
+    try:
+        message = client.chat.completions.create(model=model, messages=history, tools=TOOLS,
+                                                 tool_choice="none").choices[0].message
+    except Exception:  # the turn already failed; say so plainly rather than raise
+        return OUT_OF_ROUNDS_FALLBACK
+    history.append(message.model_dump(exclude_none=True))
+    reply = (message.content or "").strip()
+    if not reply or message.tool_calls:
+        return OUT_OF_ROUNDS_FALLBACK
+    if not reply.lower().startswith("i did not finish"):
+        reply = "I did not finish this. " + reply
+    return reply
+
+
+# Lower is better for these held-out figures; higher for every other (auc, accuracy, r2, ...).
+LOWER_IS_BETTER = ("loss", "rmse", "mae", "mse", "error")
+
+
+def held_out(metrics: dict[str, Any]) -> dict[str, float]:
+    return {key: value for key, value in metrics.items()
+            if key.startswith("held_out_") and isinstance(value, (int, float))
+            and not isinstance(value, bool)}
+
+
+def ranking_metric(rows: list[dict[str, Any]]) -> str:
+    """The held-out figure models are ranked by: AUC when they have it, else the most common."""
+    counts: dict[str, int] = {}
+    for row in rows:
+        for key in row["held_out"]:
+            if key not in ("held_out_rows", "held_out_fraction"):
+                counts[key] = counts.get(key, 0) + 1
+    for preferred in ("held_out_auc", "held_out_accuracy", "held_out_rmse", "held_out_log_loss"):
+        if preferred in counts:
+            return preferred
+    return max(counts, key=lambda key: (counts[key], key)) if counts else ""
+
+
+def compare_models(lake: Lake, turn: Turn, project: str) -> tuple[dict[str, Any], bool]:
+    """Every model (or one project's) with its held-out scores, best first (agent-ask-orama#14).
+
+    One read of the workspace's `list_models`, whose metrics hold the held-out figures training
+    wrote, so the question "which model scored best" needs one tool round, not one per run.
+    """
+    body = lake.call("workspace_query", with_customer(None, {
+        "capability": "list_models", "input": {}}, turn.customer_id), read=False)
+    if not body.get("ok"):
+        return body, False
+    models = (body.get("value") or {}).get("models") or []
+    wanted = project.strip().lower()
+    rows: list[dict[str, Any]] = []
+    for model in models:
+        if not isinstance(model, dict):
+            continue
+        names = {str(model.get("project") or "").lower(),
+                 str(model.get("project_name") or "").lower()}
+        if wanted and wanted not in names:
+            continue
+        metrics = model.get("metrics") if isinstance(model.get("metrics"), dict) else {}
+        scores = held_out(metrics)
+        row = {key: model.get(key) for key in ("id", "name", "kind", "project_name",
+                                                "pipeline_name", "run", "run_id", "created",
+                                                "exposed")}
+        row["held_out"] = scores
+        if not scores:
+            row["in_sample"] = {key: value for key, value in metrics.items()
+                                if isinstance(value, (int, float))}
+            row["note"] = "no held-out figures: the run did not hold rows out"
+        rows.append(row)
+    metric = ranking_metric(rows)
+    lower = any(word in metric for word in LOWER_IS_BETTER)
+    scored = [row for row in rows if metric in row["held_out"]]
+    scored.sort(key=lambda row: row["held_out"][metric], reverse=not lower)
+    unscored = [row for row in rows if metric not in row["held_out"]]
+    value: dict[str, Any] = {"project": project or None, "count": len(rows),
+                             "ranked_by": metric or None,
+                             "direction": ("lower is better" if lower else "higher is better")
+                             if metric else None,
+                             "models": scored + unscored}
+    if scored:
+        value["best"] = {"id": scored[0].get("id"), "name": scored[0].get("name"),
+                         "run": scored[0].get("run"), metric: scored[0]["held_out"][metric]}
+    if not rows:
+        value["note"] = ("no models" + (f" in project '{project}'" if project else "")
+                         + "; list_projects gives the names, list_runs the runs")
+    return {"ok": True, "value": value}, True
 
 
 FOLLOW_SECONDS = 240.0
@@ -505,6 +623,13 @@ def handle(name: str, arguments: dict[str, Any], index: dict[str, Capability], t
            lake: Lake, answer: Answer, methodologies: MethodologyCatalog,
            solutions: SolutionCatalog) -> str:
     """One tool call. Reads run; proposals are recorded, never run; delegation goes through lake."""
+    if name == "compare_models":
+        project = str(arguments.get("project") or "")
+        body, ok = compare_models(lake, turn, project)
+        answer.reads.append({"capability": "workspace_query",
+                             "input": {"capability": "list_models", "project": project or None},
+                             "ok": ok})
+        return observation(body)
     if name == "delegate":
         agent, request = arguments.get("agent", ""), arguments.get("request", "")
         context = arguments.get("context") or {}
