@@ -17,6 +17,13 @@ Its model coverage (agent-ask-orama#14) answers "which model scored best" with o
 out of tool rounds as incomplete with an honest partial answer (and as `ok: false` from the
 service), and grades the model-score eval.
 
+Its capability coverage (agent-ask-orama#16) serves a current lake's OpenAPI, with every engine
+capability by its own name: `issue_assignees` is in the index and every excluded ceremony is not;
+named reads go by their own name; a named `compile_intent` and `compose_solution` still need this
+turn's registries; an older lake's named calls go through `workspace_query` / `workspace_act` by
+the engine's name; `compare_models` reads the named `list_models`; prompt v11 keeps no hand-kept
+engine call; and the workspace-entities eval needs an experiment, an index and an agent read.
+
 `test_lake_bus.py` covers task receipt and result publication on lake's agent bus, and publishes an
 unfinished turn as `failed` with its partial answer.
 
