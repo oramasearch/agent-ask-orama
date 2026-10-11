@@ -57,8 +57,12 @@ and calls this service for every message.
 | `POST /v1/turn` | `{conversation_id, message, lake_token, customer_id, page, lake_url?}` → `{ok, conversation_id, trace_id, reply, reads, proposals, delegations, rounds, incomplete}`; a turn out of tool rounds is `ok: false` (HTTP 422) with its partial answer as `error` |
 
 `AGENT_SERVICE_TOKEN`, when set, is required as a bearer (only lake calls it). `LAKE_URL` is lake's
-in-cluster address; `ASK_ORAMA_MODEL` the model (default `gpt-5.5`); `OPENAI_API_KEY` the general
-Orama key the operator mounts. Conversations live in memory by id. Every turn is a trace in
+in-cluster address; `ASK_ORAMA_MODEL` the model (default `gpt-5.5`). **The model is reached through
+lake** (lake#248, lake `docs/api/model-gateway.md`): every call goes to `<lake_url>/openai/v1` with the
+turn's own `lake_token` as the API key (`model.py`), so lake counts its tokens in the turn's workspace
+and enforces the account's model-token limit. The service needs no `OPENAI_API_KEY`; only the offline
+evals (`evals.py`), which run for no workspace, call OpenAI directly. Conversations live in memory by
+id. Every turn is a trace in
 `TRACE_DIR`, never with the person's key.
 
 **Turns arrive on lake's agent bus** (lake `docs/api/agent-bus.md`). `lake_bus.py` long-polls
