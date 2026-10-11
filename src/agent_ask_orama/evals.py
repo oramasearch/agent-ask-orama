@@ -22,6 +22,8 @@ Graded deterministically, never by a judge:
   unsupported work with its issue;
 - a **solution** question must read `list_solutions` and describe the current entry honestly;
 - a **solution readout** request must read the registry, then call `get_roi_readout`;
+- a **workspace entities** question (its training experiments, search indexes and agents) must
+  read each, by lake's named capability or through `workspace_query` (agent-ask-orama#16);
 - a **model score** question ("which of my models scored best") must read `list_models` (through
   `compare_models`) and answer with held-out figures (agent-ask-orama#14);
 - no turn may run out of tool rounds (`incomplete`).
@@ -58,6 +60,7 @@ from agent_ask_orama.agent import (
     Turn,
     answer_turn,
     capability_index,
+    engine_operation,
     issue_url,
     with_customer,
 )
@@ -90,11 +93,20 @@ SOLUTION_QUESTIONS = [
 ]
 
 
+# The reads that answer "which experiments, search indexes and agents": each set is one entity,
+# by lake's name or the engine's.
+WORKSPACE_ENTITY_READS = (
+    frozenset({"list_experiments", "list_studies"}),
+    frozenset({"list_indexes"}),
+    frozenset({"list_agents"}),
+)
+
+
 @dataclass
 class Case:
     id: str
     # change | read | clarify | delegate | experiment* | app_* | methodology | solution
-    # | model_scores
+    # | model_scores | workspace_entities
     kind: str
     message: str
     expect: str     # the capability, or the agent key
@@ -150,6 +162,9 @@ def generate(index: dict[str, Capability], changes: int = 8, reads: int = 6,
     cases.append(Case("solution-roi-readout", "solution_readout",
                       "Show the measured ROI readout for solution Project retention.",
                       "get_roi_readout"))
+    cases.append(Case("workspace-entities", "workspace_entities",
+                      "Which training experiments, search indexes and agents do I have in this "
+                      "workspace?", "list_experiments,list_indexes,list_agents"))
     cases.append(Case("model-scores", "model_scores",
                       "Which of my trained models scored best on held-out AUC?", "list_models"))
     return cases
@@ -207,16 +222,18 @@ def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
         elif "diverg" not in reply:
             reasons.append("did not summarize the divergence explanation")
     elif case.kind == "model_scores":
-        listed = any(
-            read.get("capability") == "workspace_query"
-            and (read.get("input") or {}).get("capability") == case.expect
-            for read in answer["reads"]
-        )
-        if not listed:
+        if case.expect not in engine_reads(answer):
             reasons.append(f"did not read {case.expect}")
         reply = answer["reply"].lower()
         if "held-out" not in reply and "held out" not in reply and "no models" not in reply:
             reasons.append("did not answer with held-out scores")
+    elif case.kind == "workspace_entities":
+        # Each of an experiment, a search index and an agent, read by lake's name or the
+        # engine's (agent-ask-orama#16).
+        read = read_anything(answer)
+        for alternatives in WORKSPACE_ENTITY_READS:
+            if not read & alternatives:
+                reasons.append(f"did not read {' or '.join(sorted(alternatives))}")
     elif case.kind == "app_list":
         require_reads(answer, ["list_apps"], reasons)
     elif case.kind == "app_health":
@@ -224,12 +241,7 @@ def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
     elif case.kind == "build_failure":
         require_reads(answer, ["list_builds", "get_build", "receive_build_events"], reasons)
     elif case.kind == "methodology":
-        methodology_read = any(
-            read.get("capability") == "workspace_query"
-            and (read.get("input") or {}).get("capability") == "list_methodologies"
-            for read in answer["reads"]
-        )
-        if not methodology_read:
+        if "list_methodologies" not in engine_reads(answer):
             reasons.append("did not read list_methodologies")
         if methodologies is None or not methodologies.loaded:
             reasons.append("eval did not load the methodology registry")
@@ -268,16 +280,28 @@ def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
         if solutions is None or not solutions.loaded:
             reasons.append("eval did not load the solution registry")
         elif case.kind == "solution_readout":
-            readout = any(
-                read.get("capability") == "workspace_query"
-                and (read.get("input") or {}).get("capability") == case.expect
-                for read in answer["reads"]
-            )
-            if not readout:
+            if case.expect not in engine_reads(answer):
                 reasons.append(f"did not read {case.expect}")
         else:
             grade_solution_answer(case, answer["reply"], solutions, reasons)
     return Graded(case, not reasons, reasons, answer)
+
+
+def engine_reads(answer: dict[str, Any]) -> set[str]:
+    """The workspace engine reads a turn made, named either way (lake#650): through
+    workspace_query by the engine's name, or as the named lake capability."""
+    names: set[str] = set()
+    for read in answer["reads"]:
+        operation, _ = engine_operation(str(read.get("capability") or ""),
+                                        read.get("input") or {})
+        if operation:
+            names.add(operation)
+    return names
+
+
+def read_anything(answer: dict[str, Any]) -> set[str]:
+    """Every capability a turn read, lake's names and the engine's."""
+    return {str(read.get("capability")) for read in answer["reads"]} | engine_reads(answer)
 
 
 def require_reads(answer: dict[str, Any], expected: list[str], reasons: list[str]) -> None:
@@ -347,7 +371,7 @@ def read_methodologies(lake: Lake, index: dict[str, Capability],
     payload = with_customer(capability, {"capability": "list_methodologies", "input": {}},
                             customer_id)
     result = lake.call(capability.name, payload, read=capability.get)
-    catalog.observe(payload, result)
+    catalog.observe(payload["capability"], result)
     return catalog
 
 
@@ -361,7 +385,7 @@ def read_solutions(lake: Lake, index: dict[str, Capability],
     payload = with_customer(capability, {"capability": "list_solutions", "input": {}},
                             customer_id)
     result = lake.call(capability.name, payload, read=capability.get)
-    catalog.observe(payload, result)
+    catalog.observe(payload["capability"], result)
     return catalog
 
 

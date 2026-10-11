@@ -23,7 +23,7 @@ from typing import Any
 import httpx
 from openai import OpenAI
 
-PROMPT_VERSION = "v10"
+PROMPT_VERSION = "v11"
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_ROUNDS = 10
 OLD_ENGINE_ISSUE = "zetta#1061"
@@ -56,11 +56,54 @@ SOLUTION_ACTION_CAPABILITIES = frozenset({
     "approve_decision",
 })
 
-# Never offered, whatever the OpenAPI lists: signing in, recovering accounts and minting
-# credentials are ceremonies a person performs, not something an agent proposes.
-EXCLUDED_PREFIXES = ("sign_in", "sign_up", "begin_", "complete_", "recover", "verify_mfa",
-                     "enroll_mfa", "register_passkey", "start_oauth", "start_sso", "exchange_",
-                     "issue_", "mint_", "rotate_identity", "decrypt", "read_secret")
+# Never offered, whatever the OpenAPI lists: signing in, recovering accounts, minting credentials
+# and reading secrets in the clear are ceremonies a person performs, not something an agent reads or
+# proposes. Named, never a prefix: a prefix hid reads it should have (`issue_` hid the repository
+# read `issue_assignees`, agent-ask-orama#16).
+EXCLUDED_CAPABILITIES = frozenset({
+    # Signing up, signing in and second factors.
+    "sign_up_password", "sign_in_password", "sign_in_passkey", "sign_in_saml", "sign_in_sso",
+    "sign_in_taap", "begin_passkey_sign_in", "begin_passkey_registration", "register_passkey",
+    "start_oauth", "start_sso_oidc", "enroll_mfa", "verify_mfa",
+    "begin_application_authorization", "exchange_application_authorization_code",
+    # Account and key recovery.
+    "begin_email_recovery", "begin_admin_recovery", "approve_admin_recovery",
+    "begin_root_recovery", "complete_recovery", "complete_root_recovery", "recover_with_code",
+    "recover_repository_key",
+    # Minting credentials: certificates, SVIDs, JWTs, grants, session keys, sealed secrets.
+    "issue_agent_certificate", "issue_application_jwt", "issue_client_certificate",
+    "issue_device_certificate", "issue_jwt_svid", "issue_x509_svid", "issue_offline_grant",
+    "issue_ssh_host_certificate", "issue_ssh_user_certificate", "exchange_cloud_attestation",
+    "exchange_jwt_attestation", "exchange_kubernetes_attestation", "mint_agent_session_key",
+    "mint_sealed_secret", "rotate_identity",
+    # Secrets in the clear.
+    "decrypt", "read_secret",
+})
+
+# Every workspace engine capability is a named lake capability (lake#650,
+# lake docs/api/engine-capabilities.md). Most keep the engine's name; these are the ones lake
+# renames, by engine name. An older lake serves only workspace_query and workspace_act, which take
+# the engine's name.
+LAKE_NAMES = {
+    "server_info": "workspace_engine_info",
+    "search": "search_workspace_index",
+    "get_experiment": "get_holdout_experiment",
+    "create_solution": "compose_solution",
+    "validate_study": "validate_experiment",
+    "gate": "check_pipeline",
+    "run": "start_run",
+    "deploy": "deploy_pipeline",
+    "approve_plan": "approve_pipeline",
+    "save_graph": "save_pipeline",
+    "chat": "chat_with_agent",
+}
+ENGINE_NAMES = {lake: engine for engine, lake in LAKE_NAMES.items()}
+# Lake capabilities with an engine capability's name that are lake's own, not the engine's:
+# get_experiment is a training experiment (the engine's get_study), and the solutions capabilities
+# cover the workspace's own solutions beside the catalogue. The solution registry is read through
+# workspace_query.
+LAKE_OWN = frozenset({"get_experiment", "list_solutions", "get_solution", "create_solution"})
+WORKSPACE_CALLS = {"lake_read": "workspace_query", "lake_propose": "workspace_act"}
 
 
 @dataclass
@@ -74,6 +117,9 @@ class Capability:
     required: frozenset[str] = frozenset()
     # How it is sent. A POST can still only read (workspace_query): `read` says what it does.
     get: bool = True
+    # workspace_query / workspace_act: the engine capabilities lake lists for its `capability`
+    # field. Empty on an older lake, which names no engine capability on its own (lake#650).
+    engine_names: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -113,9 +159,9 @@ class MethodologyCatalog:
     loaded: bool = False
     old_engine: bool = False
 
-    def observe(self, payload: dict[str, Any], body: dict[str, Any]) -> bool:
+    def observe(self, operation: str | None, body: dict[str, Any]) -> bool:
         """Record a list_methodologies result and return whether this was that read."""
-        if payload.get("capability") != "list_methodologies":
+        if operation != "list_methodologies":
             return False
         error = body.get("error") or {}
         if not body.get("ok") and error.get("code") == "unknown_capability":
@@ -183,9 +229,9 @@ class SolutionCatalog:
     loaded: bool = False
     old_engine: bool = False
 
-    def observe(self, payload: dict[str, Any], body: dict[str, Any]) -> bool:
-        """Record a list_solutions result and return whether this was that read."""
-        if payload.get("capability") != "list_solutions":
+    def observe(self, operation: str | None, body: dict[str, Any]) -> bool:
+        """Record the engine's list_solutions result and return whether this was that read."""
+        if operation != "list_solutions":
             return False
         error = body.get("error") or {}
         if not body.get("ok") and error.get("code") == "unknown_capability":
@@ -285,11 +331,25 @@ def solution_unsupported(solution: str, name: str, condition: str, issue: str) -
     )
 
 
-def solution_creation(payload: dict[str, Any]) -> tuple[str, Any] | None:
-    """Return a nested create_solution request's identifier and level."""
-    if payload.get("capability") != "create_solution":
+def engine_operation(capability: str, payload: dict[str, Any]) -> tuple[str | None, Any]:
+    """The workspace engine capability a call reaches and its input, or (None, payload).
+
+    Either form: `workspace_query` / `workspace_act` with `{capability, input}`, or the named lake
+    capability with the engine's fields at the top level (lake#650).
+    """
+    if capability in WORKSPACE_CALLS.values():
+        operation = payload.get("capability")
+        return (operation if isinstance(operation, str) else None), payload.get("input") or {}
+    if capability in LAKE_OWN:
+        return None, payload
+    return ENGINE_NAMES.get(capability, capability), {
+        key: value for key, value in payload.items() if key not in ("customer_id", "workspace_id")}
+
+
+def solution_creation(operation: str | None, arguments: Any) -> tuple[str, Any] | None:
+    """Return a create_solution request's identifier and level."""
+    if operation != "create_solution":
         return None
-    arguments = payload.get("input") or {}
     if not isinstance(arguments, dict):
         return None
     solution = arguments.get("solution")
@@ -320,21 +380,45 @@ def capability_index(openapi: dict[str, Any]) -> dict[str, Capability]:
         if not path.startswith("/v1/") or path.count("/") != 2:
             continue
         name = path.removeprefix("/v1/")
-        if name.startswith(EXCLUDED_PREFIXES):
+        if name in EXCLUDED_CAPABILITIES:
             continue
         for method, operation in operations.items():
             if method not in {"get", "post"}:
+                continue
+            if method == "post" and name in index and index[name].get:
+                # A read lake also takes as a POST (a JSON body for nested input): one capability.
                 continue
             summary = (operation.get("summary") or operation.get("description") or "").strip()
             # What it does is lake's x-lake-action (read | write); the method only says how to
             # send it. Without the extension (an older lake), a GET is a read.
             action = operation.get("x-lake-action")
             read = action == "read" if action else method == "get"
+            # Lake fills in the account's own fields: customer_id (Ask Orama sends the person's)
+            # and workspace_id (the task's workspace).
             index[name] = Capability(name, read, summary.split("\n")[0][:140],
                                      "customer_id" in input_fields(operation),
-                                     frozenset(required_fields(operation) - {"customer_id"}),
-                                     get=method == "get")
+                                     frozenset(required_fields(operation)
+                                               - {"customer_id", "workspace_id"}),
+                                     get=method == "get",
+                                     engine_names=capability_enum(operation))
     return index
+
+
+def capability_enum(operation: dict[str, Any]) -> frozenset[str]:
+    """The names a `capability` input field allows, when lake lists them."""
+    schemas = [parameter.get("schema") or {} for parameter in operation.get("parameters") or []
+               if parameter.get("name") == "capability"]
+    body = (((operation.get("requestBody") or {}).get("content") or {})
+            .get("application/json") or {}).get("schema") or {}
+    schemas.append((body.get("properties") or {}).get("capability") or {})
+    return frozenset(name for schema in schemas for name in schema.get("enum") or []
+                     if isinstance(name, str))
+
+
+def older_lake(index: dict[str, Capability]) -> bool:
+    """A lake that serves the workspace engine only through workspace_query and workspace_act."""
+    query = index.get("workspace_query")
+    return query is not None and not query.engine_names
 
 
 def input_fields(operation: dict[str, Any]) -> set[str]:
@@ -544,14 +628,18 @@ def ranking_metric(rows: list[dict[str, Any]]) -> str:
     return max(counts, key=lambda key: (counts[key], key)) if counts else ""
 
 
-def compare_models(lake: Lake, turn: Turn, project: str) -> tuple[dict[str, Any], bool]:
+def compare_models(lake: Lake, turn: Turn, project: str,
+                   named: Capability | None = None) -> tuple[dict[str, Any], bool]:
     """Every model (or one project's) with its held-out scores, best first (agent-ask-orama#14).
 
     One read of the workspace's `list_models`, whose metrics hold the held-out figures training
     wrote, so the question "which model scored best" needs one tool round, not one per run.
     """
-    body = lake.call("workspace_query", with_customer(None, {
-        "capability": "list_models", "input": {}}, turn.customer_id), read=False)
+    if named is not None:
+        body = lake.call(named.name, with_customer(named, {}, turn.customer_id), read=named.get)
+    else:
+        body = lake.call("workspace_query", with_customer(None, {
+            "capability": "list_models", "input": {}}, turn.customer_id), read=False)
     if not body.get("ok"):
         return body, False
     models = (body.get("value") or {}).get("models") or []
@@ -625,10 +713,16 @@ def handle(name: str, arguments: dict[str, Any], index: dict[str, Capability], t
     """One tool call. Reads run; proposals are recorded, never run; delegation goes through lake."""
     if name == "compare_models":
         project = str(arguments.get("project") or "")
-        body, ok = compare_models(lake, turn, project)
-        answer.reads.append({"capability": "workspace_query",
-                             "input": {"capability": "list_models", "project": project or None},
-                             "ok": ok})
+        named = index.get("list_models")
+        body, ok = compare_models(lake, turn, project, named)
+        if named is not None:
+            answer.reads.append({"capability": named.name, "input": {"project": project or None},
+                                 "ok": ok})
+        else:
+            answer.reads.append({"capability": "workspace_query",
+                                 "input": {"capability": "list_models",
+                                           "project": project or None},
+                                 "ok": ok})
         return observation(body)
     if name == "delegate":
         agent, request = arguments.get("agent", ""), arguments.get("request", "")
@@ -666,44 +760,43 @@ def handle(name: str, arguments: dict[str, Any], index: dict[str, Capability], t
                                    "answer": body.get("value") if body.get("ok") else None,
                                    "error": (body.get("error") or {}).get("message")})
         return observation(body)
-    capability = index.get(arguments.get("capability", ""))
+    requested = str(arguments.get("capability") or "")
+    capability = index.get(requested)
+    payload = arguments.get("input") or {}
+    if capability is None and name in WORKSPACE_CALLS and older_lake(index) \
+            and WORKSPACE_CALLS[name] in index:
+        # An older lake names no engine capability on its own (lake#650): send the named one
+        # through workspace_query or workspace_act, by the engine's name.
+        capability = index[WORKSPACE_CALLS[name]]
+        payload = {"capability": ENGINE_NAMES.get(requested, requested), "input": payload}
     if capability is None:
-        return (f"FAILED: '{arguments.get('capability')}' is not a lake capability. Use a name "
+        return (f"FAILED: '{requested}' is not a lake capability. Use a name "
                 "from the lists in your instructions.")
-    payload = with_customer(capability, arguments.get("input") or {}, turn.customer_id)
+    payload = with_customer(capability, payload, turn.customer_id)
+    operation, operation_input = engine_operation(capability.name, payload)
     if name == "lake_read":
         if not capability.read:
             return (f"FAILED: {capability.name} changes something; propose it with lake_propose "
                     "so the person can confirm it.")
-        workspace_operation = (
-            payload.get("capability")
-            if capability.name == "workspace_query"
-            else None
-        )
-        if workspace_operation in SOLUTION_READ_CAPABILITIES:
+        if operation in SOLUTION_READ_CAPABILITIES:
             refusal = solutions.required()
             if refusal:
                 return refusal
         body = lake.call(capability.name, payload, read=capability.get)
         answer.reads.append({"capability": capability.name, "input": payload,
                              "ok": bool(body.get("ok"))})
-        methodology_read = capability.name == "workspace_query" and methodologies.observe(
-            payload, body)
-        if methodology_read and methodologies.old_engine:
+        if methodologies.observe(operation, body) and methodologies.old_engine:
             return methodologies.fallback_observation()
-        solution_read = capability.name == "workspace_query" and solutions.observe(payload, body)
-        if solution_read and solutions.old_engine:
+        # The solution registry is the engine's list_solutions, read through workspace_query:
+        # lake's own list_solutions adds the workspace's solutions to the catalogue.
+        registry = operation if capability.name == "workspace_query" else None
+        if solutions.observe(registry, body) and solutions.old_engine:
             return solutions.fallback_observation()
         return observation(body)
     if name == "lake_propose":
         if capability.read:
             return f"{capability.name} only reads; call it with lake_read instead."
-        workspace_operation = (
-            payload.get("capability")
-            if capability.name == "workspace_act"
-            else None
-        )
-        if workspace_operation in SOLUTION_ACTION_CAPABILITIES:
+        if operation in SOLUTION_ACTION_CAPABILITIES:
             refusal = solutions.required()
             if refusal:
                 return refusal
@@ -711,7 +804,7 @@ def handle(name: str, arguments: dict[str, Any], index: dict[str, Capability], t
             refusal = methodologies.refusal(methodology)
             if refusal:
                 return refusal
-        creation = solution_creation(payload)
+        creation = solution_creation(operation, operation_input)
         if creation is not None:
             refusal = solutions.refusal(*creation)
             if refusal:

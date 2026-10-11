@@ -14,7 +14,8 @@ so the only reads that hold one are `get_run_report` (one call per run) and `lis
 
 `compare_models` is Ask Orama's tool for this question. One call:
 
-1. reads `workspace_query {"capability": "list_models", "input": {}}` as the person;
+1. reads lake's named `list_models` as the person (lake#650), or
+   `workspace_query {"capability": "list_models", "input": {}}` on an older lake;
 2. keeps the models of the project the person named (by name or id, ignoring case), or every
    model when none is named;
 3. ranks them by one held-out figure: `held_out_auc` when the models have it, then
@@ -24,7 +25,8 @@ so the only reads that hold one are `get_run_report` (one call per run) and `lis
    held-out figures comes last with its in-sample figures and a note that its run held no rows
    out, so it is never ranked against held-out scores.
 
-The read is recorded in the turn's `reads` as `workspace_query` / `list_models`. Prompt `v10` sends
+The read is recorded in the turn's `reads` as `list_models` (or `workspace_query` /
+`list_models`). Prompt `v10` sends
 "which model is best" and "how do these runs compare" to `compare_models` first, keeps
 `get_run_report` for detail about one run, and states the inputs of the run and model reads
 (`list_runs` `limit` at most 20; `get_model {"id"}`; `get_run_report {"run_id"}`). Finding a

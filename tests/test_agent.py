@@ -62,6 +62,64 @@ OPENAPI = {"paths": {
     "/v1/repositories/{id}/sync/push": {"post": {"summary": "binary"}},
 }}
 
+# A lake since lake#650: every workspace engine capability is a named capability with the
+# engine's fields at the top level, and workspace_query / workspace_act list the engine's names.
+WORKSPACE = [{"in": "query", "name": "workspace_id", "required": True}]
+
+
+def named_read(*required):
+    return {"get": {"summary": "Engine read", "x-lake-action": "read",
+                    "parameters": CUSTOMER + WORKSPACE + [
+                        {"in": "query", "name": name, "required": True} for name in required]}}
+
+
+def named_action(*properties):
+    return {"post": {"summary": "Engine action", "requestBody": {"content": {
+        "application/json": {"schema": {
+            "properties": {name: {"type": "string"}
+                           for name in ("customer_id", "workspace_id") + properties},
+            "required": ["customer_id", "workspace_id"]}}}}}}
+
+
+def listing(*names):
+    return {"content": {"application/json": {"schema": {"properties": {
+        "customer_id": {"type": "string"}, "workspace_id": {"type": "string"},
+        "capability": {"type": "string", "enum": list(names)},
+        "input": {"type": "object"}}}}}}
+
+
+NAMED_OPENAPI = {"paths": {
+    **OPENAPI["paths"],
+    "/v1/workspace_query": {"post": {"summary": "Query a workspace", "x-lake-action": "read",
+                                     "requestBody": listing(
+                                         "list_methodologies", "list_solutions", "get_solution",
+                                         "list_models", "list_indexes", "list_agents",
+                                         "list_studies", "get_experiment", "get_roi_readout")}},
+    "/v1/workspace_act": {"post": {"summary": "Act in a workspace",
+                                   "requestBody": listing("create_solution", "compile_intent",
+                                                          "gate")}},
+    "/v1/list_methodologies": named_read(),
+    "/v1/list_models": named_read(),
+    "/v1/list_indexes": named_read(),
+    "/v1/list_agents": named_read(),
+    "/v1/list_experiments": named_read(),
+    "/v1/get_experiment": named_read("experiment_id"),
+    "/v1/get_holdout_experiment": named_read("project"),
+    "/v1/get_roi_readout": named_read("project"),
+    "/v1/compose_solution": named_action("project", "solution", "level", "sources"),
+    "/v1/compile_intent": named_action("project", "intent", "methodology"),
+    "/v1/check_pipeline": named_action("project", "graph"),
+    "/v1/issue_assignees": {"get": {"summary": "People who can be assigned an issue",
+                                    "parameters": CUSTOMER + [
+        {"in": "query", "name": "repository_id", "required": True}]}},
+    **{f"/v1/{name}": {"post": {"summary": "A ceremony"}}
+       for name in agent.EXCLUDED_CAPABILITIES},
+}}
+# The named engine capabilities the fake serves, by lake's name.
+NAMED_ENGINE = {"list_methodologies", "list_models", "list_indexes", "list_agents",
+                "list_experiments", "get_holdout_experiment", "get_roi_readout",
+                "compose_solution", "compile_intent", "check_pipeline"}
+
 # Lake requires REST/OpenAPI and MCP tools/list parity. This is the fake tools/list projection.
 LAKE_MCP_TOOLS = frozenset(
     path.removeprefix("/v1/")
@@ -165,7 +223,8 @@ MODELS = [
 
 class FakeLake:
     def __init__(self, methodology_response=None, solution_response=None,
-                 solution_operations=None) -> None:
+                 solution_operations=None, openapi=None) -> None:
+        self.openapi = openapi or OPENAPI
         self.requests: list[httpx.Request] = []
         self.polls = 0
         self.methodology_response = methodology_response or {
@@ -200,7 +259,15 @@ class FakeLake:
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         if request.url.path == "/v1/openapi.json":
-            return httpx.Response(200, json=OPENAPI)
+            return httpx.Response(200, json=self.openapi)
+        name = request.url.path.removeprefix("/v1/")
+        if name in NAMED_ENGINE and f"/v1/{name}" in self.openapi["paths"]:
+            fields = (dict(request.url.params) if request.method == "GET"
+                      else json.loads(request.content))
+            fields.pop("customer_id", None)
+            fields.pop("workspace_id", None)
+            return self.engine({"capability": agent.ENGINE_NAMES.get(name, name),
+                                "input": fields})
         if request.url.path == "/v1/list_repositories":
             return httpx.Response(200, json={"ok": True, "value": {"items": [{"name": "site"}]}})
         if request.url.path == "/v1/list_apps":
@@ -245,25 +312,40 @@ class FakeLake:
             if request.method != "POST":
                 return httpx.Response(405, json={"ok": False, "error": {
                     "code": "method_not_allowed", "message": "call it with POST"}})
-            sent = json.loads(request.content)
-            if sent.get("capability") == "list_methodologies":
-                return httpx.Response(200, json=self.methodology_response)
-            if sent.get("capability") == "list_solutions":
-                return httpx.Response(200, json=self.solution_response)
-            if sent.get("capability") == "get_solution":
-                solution_id = (sent.get("input") or {}).get("solution")
-                solutions = (self.solution_response.get("value") or {}).get("solutions") or []
-                solution = next((item for item in solutions if item.get("id") == solution_id), None)
-                if solution is None:
-                    return httpx.Response(200, json={"ok": False, "error": {
-                        "code": "not_found", "message": f"unknown solution {solution_id}"}})
-                return httpx.Response(200, json={"ok": True, "value": {"solution": solution}})
-            if sent.get("capability") == "list_models":
-                return httpx.Response(200, json={"ok": True, "value": {"models": MODELS}})
-            if sent.get("capability") in self.solution_operations:
-                return httpx.Response(200, json=self.solution_operations[sent["capability"]])
-            return httpx.Response(200, json={"ok": True, "value": {"datasets": [
-                {"database": "datasets", "name": "accounts", "rows": 200}]}})
+            return self.engine(json.loads(request.content))
+        return self.lake(request)
+
+    def engine(self, sent):
+        """The workspace engine, as workspace_query and every named engine read reach it."""
+        if sent.get("capability") == "list_methodologies":
+            return httpx.Response(200, json=self.methodology_response)
+        if sent.get("capability") == "list_solutions":
+            return httpx.Response(200, json=self.solution_response)
+        if sent.get("capability") == "get_solution":
+            solution_id = (sent.get("input") or {}).get("solution")
+            solutions = (self.solution_response.get("value") or {}).get("solutions") or []
+            solution = next((item for item in solutions if item.get("id") == solution_id), None)
+            if solution is None:
+                return httpx.Response(200, json={"ok": False, "error": {
+                    "code": "not_found", "message": f"unknown solution {solution_id}"}})
+            return httpx.Response(200, json={"ok": True, "value": {"solution": solution}})
+        if sent.get("capability") == "list_models":
+            return httpx.Response(200, json={"ok": True, "value": {"models": MODELS}})
+        if sent.get("capability") in self.solution_operations:
+            return httpx.Response(200, json=self.solution_operations[sent["capability"]])
+        if sent.get("capability") == "list_indexes":
+            return httpx.Response(200, json={"ok": True, "value": {"indexes": [
+                {"id": "idx-1", "name": "tickets", "exposed": True}]}})
+        if sent.get("capability") == "list_agents":
+            return httpx.Response(200, json={"ok": True, "value": {"agents": [
+                {"id": "ag-1", "name": "renewals helper"}]}})
+        if sent.get("capability") == "unheard_of":
+            return httpx.Response(404, json={"ok": False, "error": {
+                "code": "unknown_capability", "message": "not available through lake"}})
+        return httpx.Response(200, json={"ok": True, "value": {"datasets": [
+            {"database": "datasets", "name": "accounts", "rows": 200}]}})
+
+    def lake(self, request: httpx.Request) -> httpx.Response:
         if request.url.path == "/v1/agent_turn":
             sent = json.loads(request.content)
             if sent["agent"] in {"agent-project", "agent-application", "agent-experiments"}:
@@ -426,7 +508,7 @@ def test_apps_are_listed_from_lake():
         message(tool_calls=[call("lake_read", capability="list_apps")]),
         message(content="You have one App, risk-console, and it is running."))
     answer = run(client, fake, message="What Apps do I have?")
-    assert "prompt v10" in client.seen[0][0]["content"]
+    assert "prompt v11" in client.seen[0][0]["content"]
     assert answer.reads == [{
         "capability": "list_apps",
         "input": {"customer_id": "c-1"},
@@ -636,7 +718,7 @@ def test_app_actions_are_proposed_and_never_sent():
 
 
 def test_an_unknown_capability_is_an_observation():
-    fake = FakeLake()
+    fake = FakeLake(openapi=NAMED_OPENAPI)
     client = Scripted(message(tool_calls=[call("lake_read", capability="drop_database")]),
                       message(content="That is not something lake can do."))
     run(client, fake)
@@ -779,6 +861,7 @@ def test_evals_are_generated_from_the_index_and_graded_by_rules():
         "solution",
         "solution_readout",
         "model_scores",
+        "workspace_entities",
     }
     assert all(not index[c.expect].required for c in cases if c.kind in {"change", "read"}), \
         "a change or read case can be done as asked"
@@ -956,7 +1039,7 @@ def test_a_runnable_methodology_can_be_proposed_after_reading_the_registry():
             impact="Recompiles segments as an M-3 Pipeline")]),
         message(content="I proposed the runnable M-3 segmentation Pipeline."))
     answer = run(client, fake, message="Can you segment my customers?")
-    assert "prompt v10" in client.seen[0][0]["content"]
+    assert "prompt v11" in client.seen[0][0]["content"]
     assert answer.proposals == [{
         "capability": "workspace_act",
         "input": {
@@ -1019,7 +1102,7 @@ def test_a_runnable_solution_is_read_from_the_registry_and_proposed():
             impact="Builds the S-1 level 1 Pipeline in retention")]),
         message(content="I proposed the S-1 level 1 Pipeline for your confirmation."))
     answer = run(client, fake, message="Build S-1 level 1 in retention from customers.")
-    assert "prompt v10" in client.seen[0][0]["content"]
+    assert "prompt v11" in client.seen[0][0]["content"]
     detail = client.seen[2][-1]["content"]
     assert "Customer retention" in detail
     assert "minimum_level" in detail
@@ -1230,3 +1313,176 @@ def test_a_turn_calls_its_model_through_lakes_gateway_with_the_turns_key(tmp_pat
     assert seen[0].headers["authorization"] == "Bearer lat.task.secret"
     assert json.loads(seen[0].content)["model"] == state.model
     assert model.gateway_url("http://lake/") == "http://lake/openai/v1"
+
+
+# agent-ask-orama#16: every engine capability by its own name (lake#650), and a named exclusion.
+
+def test_the_exclusion_is_named_so_issue_assignees_is_offered_and_no_ceremony_is():
+    index = agent.capability_index(NAMED_OPENAPI)
+    assert "issue_assignees" in index and index["issue_assignees"].read
+    assert index["issue_assignees"].required == {"repository_id"}
+    for name in agent.EXCLUDED_CAPABILITIES:
+        assert f"/v1/{name}" in NAMED_OPENAPI["paths"], "the fixture serves every ceremony"
+        assert name not in index, f"{name} is a ceremony a person performs"
+    for credential in ("issue_agent_certificate", "issue_application_jwt", "issue_x509_svid",
+                       "mint_agent_session_key", "read_secret", "decrypt", "sign_in_password"):
+        assert credential in agent.EXCLUDED_CAPABILITIES
+    assert not hasattr(agent, "EXCLUDED_PREFIXES"), "never a prefix again"
+
+
+def test_named_engine_capabilities_are_in_the_index_and_the_prompt():
+    index = agent.capability_index(NAMED_OPENAPI)
+    assert not agent.older_lake(index)
+    assert "list_indexes" in index["workspace_query"].engine_names
+    for name in ("list_indexes", "list_agents", "list_experiments", "get_holdout_experiment"):
+        assert index[name].read
+    assert not index["compose_solution"].read
+    assert not index["list_indexes"].required, "lake fills in the account and the workspace"
+    assert index["get_holdout_experiment"].required == {"project"}
+    client = Scripted(message(content="Hello."))
+    run(client, FakeLake(openapi=NAMED_OPENAPI))
+    system = client.seen[0][0]["content"]
+    assert "- list_indexes:" in system and "- issue_assignees:" in system
+    assert "issue_agent_certificate" not in system
+
+
+def test_a_named_engine_read_is_sent_by_its_own_name():
+    fake = FakeLake(openapi=NAMED_OPENAPI)
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="list_indexes"),
+                            call("lake_read", capability="list_agents")]),
+        message(content="One index, tickets, and one agent, renewals helper."))
+    answer = run(client, fake)
+    assert [read["capability"] for read in answer.reads] == ["list_indexes", "list_agents"]
+    sent = next(r for r in fake.requests if r.url.path == "/v1/list_indexes")
+    assert sent.method == "GET" and sent.url.params["customer_id"] == "c-1"
+    assert "tickets" in client.seen[1][-2]["content"]
+    assert not any(r.url.path == "/v1/workspace_query" for r in fake.requests)
+
+
+def test_the_named_methodology_registry_gates_a_named_compile_intent():
+    fake = FakeLake(openapi=NAMED_OPENAPI)
+    client = Scripted(
+        message(tool_calls=[call("lake_propose", capability="compile_intent", input={
+            "project": "p", "intent": "segment", "methodology": "M-3"}, impact="Compiles")]),
+        message(tool_calls=[call("lake_read", capability="list_methodologies")]),
+        message(tool_calls=[call("lake_propose", capability="compile_intent", input={
+            "project": "p", "intent": "speech", "methodology": "M-14"}, impact="Compiles")]),
+        message(tool_calls=[call("lake_propose", capability="compile_intent", input={
+            "project": "p", "intent": "segment", "methodology": "M-3"}, impact="Compiles")]),
+        message(content="Proposed the M-3 Pipeline; speech is not supported yet (zetta#1053)."))
+    answer = run(client, fake)
+    tool_replies = [m["content"] for m in client.seen[-1] if m.get("role") == "tool"]
+    assert tool_replies[0].startswith("FAILED: methodology_registry_required")
+    assert "zetta#1053" in tool_replies[2]
+    assert answer.proposals == [{"capability": "compile_intent", "input": {
+        "project": "p", "intent": "segment", "methodology": "M-3", "customer_id": "c-1"},
+        "impact": "Compiles"}]
+
+
+def test_named_solution_operations_need_the_registry_and_a_declared_level():
+    fake = FakeLake(openapi=NAMED_OPENAPI)
+    compose = {"project": "retention", "solution": "S-1", "level": 1,
+               "sources": {"source": "datasets", "table": "customers"}}
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="get_holdout_experiment",
+                                 input={"project": "retention"})]),
+        message(tool_calls=[call("lake_read", capability="workspace_query", input={
+            "capability": "list_solutions", "input": {}})]),
+        message(tool_calls=[call("lake_read", capability="get_holdout_experiment",
+                                 input={"project": "retention"}),
+                            call("lake_propose", capability="compose_solution",
+                                 input={**compose, "solution": "B-1"}, impact="Builds B-1"),
+                            call("lake_propose", capability="compose_solution",
+                                 input={**compose, "level": 4}, impact="Builds S-1 level 4"),
+                            call("lake_propose", capability="compose_solution", input=compose,
+                                 impact="Builds S-1 level 1")]),
+        message(content="Proposed S-1 level 1."))
+    answer = run(client, fake)
+    tool_replies = [m["content"] for m in client.seen[-1] if m.get("role") == "tool"]
+    assert tool_replies[0].startswith("FAILED: solution_registry_required")
+    assert "collecting" in tool_replies[2], "the holdout is read once the registry is"
+    assert "sketch" in tool_replies[3]
+    assert "level 4 is not declared" in tool_replies[4]
+    assert [p["impact"] for p in answer.proposals] == ["Builds S-1 level 1"]
+    assert not any(r.url.path == "/v1/compose_solution" for r in fake.requests)
+
+
+def test_lakes_own_get_experiment_is_not_a_solution_read():
+    assert agent.engine_operation("get_experiment", {"experiment_id": "e-1"})[0] is None
+    assert agent.engine_operation("get_holdout_experiment", {"project": "p"})[0] == \
+        "get_experiment"
+    assert agent.engine_operation("workspace_query", {"capability": "list_agents",
+                                                      "input": {"x": 1}}) == ("list_agents",
+                                                                              {"x": 1})
+    assert agent.engine_operation("list_indexes", {"customer_id": "c", "workspace_id": "w",
+                                                   "q": 1}) == ("list_indexes", {"q": 1})
+
+
+def test_an_older_lake_sends_named_engine_calls_through_workspace_query_and_act():
+    """A lake before lake#650 lists no engine capability on its own: the fallback."""
+    fake = FakeLake()
+    assert agent.older_lake(agent.capability_index(OPENAPI))
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="list_indexes"),
+                            call("lake_propose", capability="check_pipeline",
+                                 input={"project": "p", "graph": "g"}, impact="Checks g"),
+                            call("lake_read", capability="unheard_of")]),
+        message(content="One index, tickets; the check is proposed."))
+    answer = run(client, fake)
+    sent = [json.loads(r.content) for r in fake.requests if r.url.path == "/v1/workspace_query"]
+    assert sent[0] == {"capability": "list_indexes", "input": {}, "customer_id": "c-1"}
+    assert answer.proposals == [{"capability": "workspace_act", "input": {
+        "capability": "gate", "input": {"project": "p", "graph": "g"}, "customer_id": "c-1"},
+        "impact": "Checks g"}], "by the engine's name"
+    tool_replies = [m["content"] for m in client.seen[-1] if m.get("role") == "tool"]
+    assert "tickets" in tool_replies[0]
+    assert tool_replies[2].startswith("FAILED: unknown_capability")
+    assert not any(r.url.path == "/v1/workspace_act" for r in fake.requests)
+
+
+def test_compare_models_reads_the_named_list_models_when_lake_has_it():
+    fake = FakeLake(openapi=NAMED_OPENAPI)
+    client = Scripted(message(tool_calls=[call("compare_models")]),
+                      message(content="run nine scored best."))
+    answer = run(client, fake)
+    assert answer.reads == [{"capability": "list_models", "input": {"project": None},
+                             "ok": True}]
+    assert any(r.url.path == "/v1/list_models" and r.method == "GET" for r in fake.requests)
+    assert json.loads(client.seen[1][-1]["content"])["best"]["id"] == "m-9"
+
+
+def test_the_prompt_keeps_no_hand_kept_engine_calls():
+    from pathlib import Path
+
+    import agent_ask_orama
+
+    prompt = (Path(agent_ask_orama.__file__).parent / "prompts"
+              / f"{agent.PROMPT_VERSION}.md").read_text()
+    # The solution registry stays the engine's list_solutions / get_solution through
+    # workspace_query: lake's own list_solutions also holds the workspace's solutions.
+    for engine_call in ('"capability": "list_datasets"', '"capability": "get_dataset"',
+                        '"capability": "list_methodologies"', "workspace_query` with `list_models",
+                        "capability `create_solution`", "capability `compile_intent`",
+                        "`get_graph`", "`start_study`"):
+        assert engine_call not in prompt
+
+
+def test_the_workspace_entities_eval_needs_an_experiment_an_index_and_an_agent():
+    from agent_ask_orama import evals
+    index = agent.capability_index(NAMED_OPENAPI)
+    case = next(c for c in evals.generate(index) if c.kind == "workspace_entities")
+    assert "experiments" in case.message and "search indexes" in case.message \
+        and "agents" in case.message
+    named = {"reply": "One experiment, one index, one agent.", "proposals": [],
+             "delegations": [], "reads": [{"capability": name, "input": {}, "ok": True}
+                                          for name in ("list_experiments", "list_indexes",
+                                                       "list_agents")]}
+    assert evals.grade(case, named, index, []).passed
+    engine = {**named, "reads": [
+        {"capability": "workspace_query", "input": {"capability": name}, "ok": True}
+        for name in ("list_studies", "list_indexes", "list_agents")]}
+    assert evals.grade(case, engine, index, []).passed, "the older lake's form passes too"
+    no_index = {**named, "reads": named["reads"][::2]}
+    graded = evals.grade(case, no_index, index, [])
+    assert not graded.passed and graded.reasons == ["did not read list_indexes"]

@@ -15,7 +15,9 @@ measured readout, prompt v6 first reads:
 }
 ```
 
-The call uses lake's read-only `workspace_query`. Ask Orama does not carry catalogue entries in its
+The call uses lake's read-only `workspace_query`, also on a lake that names every engine
+capability (lake#650): lake's own `list_solutions` and `get_solution` add the workspace's own
+solutions to the catalogue and are not the registry. Ask Orama does not carry catalogue entries in its
 prompt and does not reuse a result from an earlier turn. It uses `get_solution` for the current
 details of an entry and describes the fields the engine returns, including its product copy, use
 case, methodology composition, declared levels, actions, latency, autonomy, data roles, status,
@@ -32,7 +34,9 @@ The catalogue distinguishes three states:
 - An entry with `status: "sketch"` cannot be built. Ask Orama gives its promotion condition and
   issue instead.
 
-Creation is a proposal for the person to confirm:
+Creation is a proposal for the person to confirm. Since prompt v11 it is `compose_solution`
+(lake's name for the engine's `create_solution`, with the same fields at the top level); on an
+older lake, the `workspace_act` form:
 
 ```json
 {
@@ -53,15 +57,18 @@ Creation is a proposal for the person to confirm:
 The handler independently requires a `list_solutions` result from the current turn before known
 solution reads and state-changing operations. For creation, it refuses unknown entries, sketches
 and levels the returned entry does not declare. It does not reject a non-sketch solely because
-`runnable` is false: the missing-component list governs the preview warning. `run_solution` is also
-proposed through `workspace_act`; Ask Orama never runs it directly.
+`runnable` is false: the missing-component list governs the preview warning. These checks apply to
+both forms (`compose_solution` and `workspace_act` / `create_solution`). `run_solution` is also a
+proposal; Ask Orama never runs it directly.
 
 ## Policy and evidence reads
 
-After the registry read, Ask Orama uses the current engine operations through `workspace_query`:
+After the registry read, Ask Orama uses the current engine operations, by lake's name where lake
+has one (prompt v11) or through `workspace_query`:
 
 - `get_policy` reads the Project's active decision policy.
-- `get_experiment` reads its holdout.
+- `get_holdout_experiment` (the engine's `get_experiment`) reads its holdout; lake's own
+  `get_experiment` is a training experiment and is not a solution read.
 - `list_ledger` reads score → decision → action → outcome evidence.
 - `get_monitor` reads its monitor.
 - `get_roi_readout` reads measured value.
@@ -70,8 +77,8 @@ An `unknown_capability` response means that operation is not deployed yet. It is
 not as an empty policy or an empty measurement. Ask Orama reports only returned measurements and
 never promises return figures, pricing or odds of success.
 
-Policy edits, decisions and approvals change state. Ask Orama records them as `workspace_act`
-proposals with an impact statement; no write is sent before the person confirms in lake.
+Policy edits, decisions and approvals change state. Ask Orama records them as proposals (the named
+capability, or `workspace_act` on an older lake) with an impact statement; no write is sent before the person confirms in lake.
 
 ## Older engines
 

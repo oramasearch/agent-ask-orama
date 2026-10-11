@@ -9,8 +9,8 @@ and calls this service for every message.
 
 - **Works as the person, never more.** Each turn carries the key lake delegates from the person's
   session (`lake_token`); lake's policy decides what it may read.
-- **Reads** any lake capability the person may read (`lake_read`), including their workspace's
-  Zetta through `workspace_query`.
+- **Reads** any lake capability the person may read (`lake_read`), including every capability of
+  their workspace's engine by its own name (lake#650; through `workspace_query` on an older lake).
 - **Proposes, never writes** (`lake_propose`): a change comes back as a proposal with its impact;
   lake shows it and runs it only when the person confirms.
 - **Delegates to any agent** (`delegate`), through lake's `agent_turn`: the Project Agent
@@ -21,7 +21,9 @@ and calls this service for every message.
   Orama follows it with `receive_agent_events` for up to four minutes (lake#269). A subagent still
   working then is reported as working, with its task.
 - **Its vocabulary is derived.** The capabilities it may name come from lake's `/v1/openapi.json`
-  at every turn, less the ceremonies a person performs (signing in, recovering, minting keys).
+  at every turn, less the ceremonies a person performs (signing in, recovering, minting
+  credentials, reading secrets in the clear), named one by one in `EXCLUDED_CAPABILITIES`
+  ([`docs/capabilities/`](docs/capabilities/), agent-ask-orama#16).
 - **It knows Apps and builds.** It reads App desired and observed state plus retained App events,
   and reads build rows plus retained build events to explain failures. Building or changing an App
   goes to ApplicationAgent. Deploys, rebuilds, rollbacks, scaling and every other App action remain
