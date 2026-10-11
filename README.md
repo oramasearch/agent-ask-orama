@@ -40,6 +40,13 @@ and calls this service for every message.
   methodology runnable; otherwise it names the methodology's Zetta issue. An older workspace
   without the registry is treated as supporting only M-1 churn / GBDT classification.
 
+- **It compares trained models in one read.** `compare_models` lists every model (or one
+  project's) with its held-out scores, best first, from the workspace's `list_models`, so "which
+  model scored best" is answered within the turn (agent-ask-orama#14, [`docs/models/`](docs/models/)).
+- **An unfinished turn is never a success.** When the tool rounds run out, Ask Orama says it did
+  not finish, what it found and what is still unknown; the turn answers `ok: false` with
+  `incomplete: true`, and lake's agent bus records it as `failed`.
+
 ## Service
 
 `agent-ask-orama-serve` on `PORT` (8080):
@@ -47,7 +54,7 @@ and calls this service for every message.
 | Route | What it does |
 |---|---|
 | `GET /healthz` | the model and prompt version |
-| `POST /v1/turn` | `{conversation_id, message, lake_token, customer_id, page, lake_url?}` → `{ok, conversation_id, trace_id, reply, reads, proposals, delegations, rounds}` |
+| `POST /v1/turn` | `{conversation_id, message, lake_token, customer_id, page, lake_url?}` → `{ok, conversation_id, trace_id, reply, reads, proposals, delegations, rounds, incomplete}`; a turn out of tool rounds is `ok: false` (HTTP 422) with its partial answer as `error` |
 
 `AGENT_SERVICE_TOKEN`, when set, is required as a bearer (only lake calls it). `LAKE_URL` is lake's
 in-cluster address; `ASK_ORAMA_MODEL` the model (default `gpt-5.5`); `OPENAI_API_KEY` the general
@@ -74,7 +81,8 @@ cover train, tune, best-model, progress and divergence requests. Fixed methodolo
 whether customer segmentation and speech analytics run; they are graded against the live registry,
 including the tracking issue when support is absent. Fixed solution cases grade S-1 and B-1
 against the live catalogue, and a measured-readout case requires `get_roi_readout` after
-`list_solutions`. Change and read cases sample only capabilities whose required inputs are the
+`list_solutions`. A model-score case asks which trained model scored best and requires `list_models`
+and a held-out figure in the reply; every case fails when its turn ran out of tool rounds. Change and read cases sample only capabilities whose required inputs are the
 space alone, so they can be done as asked.
 
 ```sh
@@ -101,7 +109,9 @@ proposed and never sent, methodology registry enforcement and the old-engine fal
 through lake, App and build reads with retained events, ApplicationAgent app turns, proposal-only
 App actions, ExperimentsAgent routing and confirmation isolation, solution catalogue and
 policy/readout behavior, solution and policy proposals that are never sent, unknown capabilities
-as observations, the service's conversation and a trace without the key, and the eval grader.
+as observations, `compare_models` ranking held-out scores, a turn out of tool rounds ending
+unfinished (and published as `failed`), the service's conversation and a trace without the key,
+and the eval grader.
 
 ## Documentation
 
@@ -109,6 +119,8 @@ as observations, the service's conversation and a trace without the key, and the
   delegation and proposal-only actions.
 - [`docs/experiments/`](docs/experiments/) — ExperimentsAgent turn routing, proposal/result
   summaries and the confirmation boundary.
+- [`docs/models/`](docs/models/) — comparing trained models by held-out score
+  (`compare_models`), and how a turn out of tool rounds ends as failed with a partial answer.
 - [`docs/methodologies/`](docs/methodologies/) — registry reads, proposal enforcement, graph
   explanations and old-engine behavior.
 - [`docs/solutions/`](docs/solutions/) — catalogue reads, preview and sketch behavior, policy and

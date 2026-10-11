@@ -3,6 +3,10 @@
 Each prompt behavior change creates a new version; previous versions remain for trace history.
 `agent.py` selects the active version through `PROMPT_VERSION`.
 
+- `v10.md` adds `compare_models` for "which model scored best" (held-out scores of every model in
+  one call), the `limit` and `id`/`run_id` inputs of the run and model reads, and what to say when
+  the turn's tool rounds run out (agent-ask-orama#14).
+- `v9.md` stops offering Orama's internal corpus and eval generators for delegation.
 - `v8.md` routes study design, progress and explanations to ExperimentsAgent, summarizes proposals
   and results, and keeps confirmed study and promotion objects on lake's confirmation path.
 - `v7.md` adds live App and build reads, retained event diagnosis, ApplicationAgent app turns and

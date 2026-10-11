@@ -91,3 +91,12 @@ def test_the_worker_starts_only_when_the_operator_configured_the_bus(monkeypatch
     monkeypatch.delenv("AGENT_BUS_TOKEN", raising=False)
     monkeypatch.setenv("LAKE_URL", "http://lake")
     assert lake_bus.start_from_env(lambda body: {"ok": True}, "agent-x") is None
+
+
+def test_an_unfinished_turn_is_published_as_failed_with_its_partial_answer():
+    """agent-ask-orama#14: a turn out of tool rounds never reaches lake as a result."""
+    lake = FakeLake([{"task_id": "t1", "customer_id": "c", "kind": "ask"}])
+    run(lake, lambda body: {"ok": False, "incomplete": True,
+                            "error": "I did not finish this. So far: two models."})
+    assert [event["type"] for event in lake.events] == ["progress", "failed"]
+    assert lake.events[-1]["message"] == "I did not finish this. So far: two models."

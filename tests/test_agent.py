@@ -140,6 +140,29 @@ SOLUTIONS = [
 ]
 
 
+# Two finished runs of one project (the second with a larger holdout), one run without a holdout,
+# and a model in another project: list_models as the engine answers it.
+MODELS = [
+    {"id": "m-1", "name": "churn model", "kind": "gbdt", "project": "p-1",
+     "project_name": "api_churn", "pipeline_name": "churn", "run": "run one", "run_id": "r-1",
+     "created": "2026-10-10T10:00:00Z", "exposed": False, "has_weights": True,
+     "metrics": {"held_out_auc": 0.874, "held_out_accuracy": 0.80, "held_out_log_loss": 0.41,
+                 "held_out_rows": 300, "auc": 0.97}},
+    {"id": "m-2", "name": "churn model", "kind": "gbdt", "project": "p-1",
+     "project_name": "api_churn", "pipeline_name": "churn", "run": "run two", "run_id": "r-2",
+     "created": "2026-10-10T11:00:00Z", "exposed": False, "has_weights": True,
+     "metrics": {"held_out_auc": 0.890, "held_out_accuracy": 0.812, "held_out_log_loss": 0.383,
+                 "held_out_rows": 292, "auc": 0.95}},
+    {"id": "m-3", "name": "churn model", "kind": "gbdt", "project": "p-1",
+     "project_name": "api_churn", "pipeline_name": "churn", "run": "run three", "run_id": "r-3",
+     "created": "2026-10-10T12:00:00Z", "exposed": False, "has_weights": True,
+     "metrics": {"auc": 0.99, "accuracy": 0.97}},
+    {"id": "m-9", "name": "other", "kind": "gbdt", "project": "p-2", "project_name": "elsewhere",
+     "pipeline_name": "x", "run": "run nine", "run_id": "r-9", "created": "2026-10-09T09:00:00Z",
+     "exposed": True, "has_weights": True, "metrics": {"held_out_auc": 0.99}},
+]
+
+
 class FakeLake:
     def __init__(self, methodology_response=None, solution_response=None,
                  solution_operations=None) -> None:
@@ -235,6 +258,8 @@ class FakeLake:
                     return httpx.Response(200, json={"ok": False, "error": {
                         "code": "not_found", "message": f"unknown solution {solution_id}"}})
                 return httpx.Response(200, json={"ok": True, "value": {"solution": solution}})
+            if sent.get("capability") == "list_models":
+                return httpx.Response(200, json={"ok": True, "value": {"models": MODELS}})
             if sent.get("capability") in self.solution_operations:
                 return httpx.Response(200, json=self.solution_operations[sent["capability"]])
             return httpx.Response(200, json={"ok": True, "value": {"datasets": [
@@ -401,7 +426,7 @@ def test_apps_are_listed_from_lake():
         message(tool_calls=[call("lake_read", capability="list_apps")]),
         message(content="You have one App, risk-console, and it is running."))
     answer = run(client, fake, message="What Apps do I have?")
-    assert "prompt v9" in client.seen[0][0]["content"]
+    assert "prompt v10" in client.seen[0][0]["content"]
     assert answer.reads == [{
         "capability": "list_apps",
         "input": {"customer_id": "c-1"},
@@ -619,6 +644,102 @@ def test_an_unknown_capability_is_an_observation():
     assert tool_reply["role"] == "tool" and "not a lake capability" in tool_reply["content"]
 
 
+def test_which_model_scored_best_is_one_read_of_every_models_held_out_scores():
+    """agent-ask-orama#14: the question answers within the round budget, from held-out scores."""
+    fake = FakeLake()
+    client = Scripted(
+        message(tool_calls=[call("compare_models", project="API_churn")]),
+        message(content="run two scored best: held-out AUC 0.890 against 0.874 for run one."))
+    answer = run(client, fake, message="Which of my models in project api_churn scored best "
+                                        "on held-out AUC?")
+    assert answer.rounds == 2 and not answer.incomplete
+    assert answer.reads == [{"capability": "workspace_query",
+                             "input": {"capability": "list_models", "project": "API_churn"},
+                             "ok": True}]
+    sent = [json.loads(r.content) for r in fake.requests if r.url.path == "/v1/workspace_query"]
+    assert sent == [{"capability": "list_models", "input": {}, "customer_id": "c-1"}]
+    observed = json.loads(client.seen[1][-1]["content"])
+    assert observed["ranked_by"] == "held_out_auc"
+    assert observed["direction"] == "higher is better"
+    assert observed["best"] == {"id": "m-2", "name": "churn model", "run": "run two",
+                                "held_out_auc": 0.890}
+    assert [m["id"] for m in observed["models"]] == ["m-2", "m-1", "m-3"], \
+        "best first; the model with no holdout last; another project's left out"
+    unscored = observed["models"][-1]
+    assert unscored["held_out"] == {} and unscored["in_sample"]["auc"] == 0.99
+    assert "did not hold rows out" in unscored["note"]
+
+
+def test_compare_models_names_an_empty_project_and_a_failed_read():
+    fake = FakeLake()
+    client = Scripted(message(tool_calls=[call("compare_models", project="nothing")]),
+                      message(content="That project has no models."))
+    run(client, fake)
+    observed = json.loads(client.seen[1][-1]["content"])
+    assert observed["count"] == 0 and "no models in project 'nothing'" in observed["note"]
+
+    def refusing(request):
+        if request.url.path == "/v1/workspace_query":
+            return httpx.Response(200, json={"ok": False, "error": {
+                "code": "unknown_capability", "message": "list_models"}})
+        return fake(request)
+
+    client = Scripted(message(tool_calls=[call("compare_models")]),
+                      message(content="I could not read the models."))
+    answer = run(client, refusing)
+    assert client.seen[1][-1]["content"].startswith("FAILED: unknown_capability")
+    assert answer.reads[0]["ok"] is False
+
+
+def test_a_turn_out_of_rounds_ends_unfinished_with_an_honest_partial_answer(tmp_path):
+    """agent-ask-orama#14: running out of tool rounds is never a success."""
+    fake = FakeLake()
+    reads = [message(tool_calls=[call("lake_read", capability="list_repositories")])
+             for _ in range(agent.MAX_ROUNDS)]
+    client = Scripted(*reads, message(content="So far: one repository, site. Still unknown: "
+                                              "its last build."))
+    answer = run(client, fake)
+    assert answer.incomplete and answer.rounds == agent.MAX_ROUNDS
+    assert answer.reply.startswith("I did not finish this.")
+    assert "one repository, site" in answer.reply
+    assert "every tool round" in client.seen[-1][-1]["content"], "asked to answer without tools"
+
+    # As a service turn it is not ok, so the bus publishes `failed` with the partial answer.
+    state = service.State()
+    state.trace_dir = tmp_path
+    client = Scripted(*reads, message(content="I did not finish this. Nothing found yet."))
+    result = service.run_turn({"message": "hi", "lake_token": "person-key",
+                               "lake_url": "http://lake"}, state, client,
+                              agent.Lake(turn(), transport=httpx.MockTransport(fake)))
+    assert result["ok"] is False and result["incomplete"] is True
+    assert result["error"] == "I did not finish this. Nothing found yet."
+
+
+def test_an_empty_or_failed_partial_answer_still_says_it_did_not_finish():
+    fake = FakeLake()
+    reads = [message(tool_calls=[call("lake_read", capability="list_repositories")])
+             for _ in range(agent.MAX_ROUNDS)]
+    answer = run(Scripted(*reads, message(content="")), fake)
+    assert answer.incomplete and answer.reply == agent.OUT_OF_ROUNDS_FALLBACK
+    answer = run(Scripted(*reads), fake)  # the final call itself fails
+    assert answer.incomplete and answer.reply == agent.OUT_OF_ROUNDS_FALLBACK
+
+
+def test_the_model_score_eval_needs_list_models_held_out_scores_and_a_finished_turn():
+    from agent_ask_orama import evals
+    index = agent.capability_index(OPENAPI)
+    case = next(c for c in evals.generate(index) if c.kind == "model_scores")
+    read = {"capability": "workspace_query", "input": {"capability": "list_models"}, "ok": True}
+    good = {"reply": "run two scored best: held-out AUC 0.890.", "reads": [read],
+            "proposals": [], "delegations": []}
+    assert evals.grade(case, good, index, []).passed
+    unfinished = {**good, "incomplete": True}
+    assert "ran out of tool rounds before answering" in evals.grade(
+        case, unfinished, index, []).reasons
+    in_sample = {**good, "reply": "run three is best with AUC 0.99."}
+    assert not evals.grade(case, in_sample, index, []).passed
+
+
 def test_a_service_turn_needs_the_persons_key_and_keeps_the_conversation(tmp_path):
     state = service.State()
     state.trace_dir = tmp_path
@@ -657,6 +778,7 @@ def test_evals_are_generated_from_the_index_and_graded_by_rules():
         "methodology",
         "solution",
         "solution_readout",
+        "model_scores",
     }
     assert all(not index[c.expect].required for c in cases if c.kind in {"change", "read"}), \
         "a change or read case can be done as asked"
@@ -834,7 +956,7 @@ def test_a_runnable_methodology_can_be_proposed_after_reading_the_registry():
             impact="Recompiles segments as an M-3 Pipeline")]),
         message(content="I proposed the runnable M-3 segmentation Pipeline."))
     answer = run(client, fake, message="Can you segment my customers?")
-    assert "prompt v9" in client.seen[0][0]["content"]
+    assert "prompt v10" in client.seen[0][0]["content"]
     assert answer.proposals == [{
         "capability": "workspace_act",
         "input": {
@@ -897,7 +1019,7 @@ def test_a_runnable_solution_is_read_from_the_registry_and_proposed():
             impact="Builds the S-1 level 1 Pipeline in retention")]),
         message(content="I proposed the S-1 level 1 Pipeline for your confirmation."))
     answer = run(client, fake, message="Build S-1 level 1 in retention from customers.")
-    assert "prompt v9" in client.seen[0][0]["content"]
+    assert "prompt v10" in client.seen[0][0]["content"]
     detail = client.seen[2][-1]["content"]
     assert "Customer retention" in detail
     assert "minimum_level" in detail

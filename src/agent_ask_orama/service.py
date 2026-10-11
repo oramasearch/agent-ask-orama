@@ -55,6 +55,11 @@ def run_turn(body: dict[str, Any], state: State, client: OpenAI | None = None,
          "at": datetime.now(timezone.utc).isoformat(), "conversation_id": conversation,
          "message": message, "page": turn.page, "answer": answer.as_dict()}, indent=1,
         default=str))
+    if answer.incomplete:
+        # Out of tool rounds (agent-ask-orama#14): a partial answer is not a success. On lake's
+        # bus this publishes `failed` with the partial answer as its message.
+        return {"ok": False, "error": answer.reply, "conversation_id": conversation,
+                "trace_id": trace_id, **answer.as_dict()}
     return {"ok": True, "conversation_id": conversation, "trace_id": trace_id, **answer.as_dict()}
 
 
