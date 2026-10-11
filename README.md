@@ -9,8 +9,8 @@ and calls this service for every message.
 
 - **Works as the person, never more.** Each turn carries the key lake delegates from the person's
   session (`lake_token`); lake's policy decides what it may read.
-- **Reads** any lake capability the person may read (`lake_read`), including their workspace's
-  Zetta through `workspace_query`.
+- **Reads** any lake capability the person may read (`lake_read`), including every capability of
+  their workspace's engine by its own name (lake#650; through `workspace_query` on an older lake).
 - **Proposes, never writes** (`lake_propose`): a change comes back as a proposal with its impact;
   lake shows it and runs it only when the person confirms.
 - **Delegates to any agent** (`delegate`), through lake's `agent_turn`: the Project Agent
@@ -21,7 +21,9 @@ and calls this service for every message.
   Orama follows it with `receive_agent_events` for up to four minutes (lake#269). A subagent still
   working then is reported as working, with its task.
 - **Its vocabulary is derived.** The capabilities it may name come from lake's `/v1/openapi.json`
-  at every turn, less the ceremonies a person performs (signing in, recovering, minting keys).
+  at every turn, less the ceremonies a person performs (signing in, recovering, minting
+  credentials, reading secrets in the clear), named one by one in `EXCLUDED_CAPABILITIES`
+  ([`docs/capabilities/`](docs/capabilities/), agent-ask-orama#16).
 - **It knows Apps and builds.** It reads App desired and observed state plus retained App events,
   and reads build rows plus retained build events to explain failures. Building or changing an App
   goes to ApplicationAgent. Deploys, rebuilds, rollbacks, scaling and every other App action remain
@@ -57,8 +59,12 @@ and calls this service for every message.
 | `POST /v1/turn` | `{conversation_id, message, lake_token, customer_id, page, lake_url?}` → `{ok, conversation_id, trace_id, reply, reads, proposals, delegations, rounds, incomplete}`; a turn out of tool rounds is `ok: false` (HTTP 422) with its partial answer as `error` |
 
 `AGENT_SERVICE_TOKEN`, when set, is required as a bearer (only lake calls it). `LAKE_URL` is lake's
-in-cluster address; `ASK_ORAMA_MODEL` the model (default `gpt-5.5`); `OPENAI_API_KEY` the general
-Orama key the operator mounts. Conversations live in memory by id. Every turn is a trace in
+in-cluster address; `ASK_ORAMA_MODEL` the model (default `gpt-5.5`). **The model is reached through
+lake** (lake#248, lake `docs/api/model-gateway.md`): every call goes to `<lake_url>/openai/v1` with the
+turn's own `lake_token` as the API key (`model.py`), so lake counts its tokens in the turn's workspace
+and enforces the account's model-token limit. The service needs no `OPENAI_API_KEY`; only the offline
+evals (`evals.py`), which run for no workspace, call OpenAI directly. Conversations live in memory by
+id. Every turn is a trace in
 `TRACE_DIR`, never with the person's key.
 
 **Turns arrive on lake's agent bus** (lake `docs/api/agent-bus.md`). `lake_bus.py` long-polls

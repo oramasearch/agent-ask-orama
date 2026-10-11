@@ -3,6 +3,11 @@
 Each prompt behavior change creates a new version; previous versions remain for trace history.
 `agent.py` selects the active version through `PROMPT_VERSION`.
 
+- `v11.md` drops the hand-kept engine reads and the `workspace_query` / `workspace_act` form
+  wherever lake names the engine capability itself (lake#650): workspace data is read and proposed
+  by its own name from the live lists, with a line for an older lake; the solution registry stays
+  the engine's `list_solutions` through `workspace_query`; solutions are composed with
+  `compose_solution` and their holdout read with `get_holdout_experiment` (agent-ask-orama#16).
 - `v10.md` adds `compare_models` for "which model scored best" (held-out scores of every model in
   one call), the `limit` and `id`/`run_id` inputs of the run and model reads, and what to say when
   the turn's tool rounds run out (agent-ask-orama#14).

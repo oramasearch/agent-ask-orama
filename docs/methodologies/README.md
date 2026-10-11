@@ -12,14 +12,16 @@ nothing, prompt v5 starts the turn with:
 }
 ```
 
-The call goes through lake's read-only `workspace_query`. The result supplies each methodology's
-identifier, name, family, model kinds, solutions, required inputs, outputs, metrics, `runnable`,
+Since prompt v11 the call is lake's named `list_methodologies` (lake#650), or the same call
+through the read-only `workspace_query` on an older lake; the registry is recorded from either.
+The result supplies each methodology's identifier, name, family, model kinds, solutions, required inputs, outputs, metrics, `runnable`,
 `partial` and tracking `issue`. Ask Orama answers support questions from those fields and converts a
 `zetta#N` issue into its GitHub link.
 
 ## Pipeline changes
 
-For a runnable methodology, Ask Orama may propose `workspace_act` / `compile_intent` with the
+For a runnable methodology, Ask Orama may propose `compile_intent` (or `workspace_act` /
+`compile_intent` on an older lake) with the
 project, intent and explicit `methodology`, or delegate an existing Pipeline to `agent-project`
 with its project and graph context. The person still confirms every proposal in lake.
 
@@ -43,7 +45,8 @@ that engine generation is identified as `zetta#1061`.
 
 ## Pipeline and feature explanations
 
-For a Pipeline that appears to train nothing, Ask Orama reads `get_graph` or `get_project` and
+For a Pipeline that appears to train nothing, Ask Orama reads `get_pipeline` (the engine's
+`get_graph`) or `get_project` and
 explains its `methodology` and `runnable` values. It can use `analyze_dataset` for semantic types,
 grain, keys, joins and leakage suspects, then `plan_features` with a runnable methodology for the
 feature plan or the required transformation.

@@ -1,5 +1,8 @@
 # Documentation
 
+- [`capabilities/`](capabilities/) — the capability index from lake's OpenAPI, every workspace
+  engine capability by its own name (lake#650), the older-lake fallback and the named list of
+  ceremonies never offered.
 - [`apps/`](apps/) — live App and build status, retained events, ApplicationAgent delegation and
   proposal-only actions.
 - [`experiments/`](experiments/) — ExperimentsAgent routing for study design, progress and

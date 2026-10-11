@@ -1,7 +1,8 @@
 """Ask Orama as the lake-wide service (zetta#1018): `POST /v1/turn`, `GET /healthz`.
 
 lake calls it for every message in the Ask Orama panel, passing the person's delegated key for the
-turn (`lake_token`), the space, and the page they are on. Conversations are kept in memory by id.
+turn (`lake_token`), the account, and the page they are on. The same key reaches the model through
+lake's model gateway (`model.py`). Conversations are kept in memory by id.
 Standard library only.
 """
 
@@ -20,6 +21,7 @@ from openai import OpenAI
 
 from agent_ask_orama import lake_bus
 from agent_ask_orama.agent import PROMPT_VERSION, Turn, answer_turn
+from agent_ask_orama.model import gateway_client
 
 
 class State:
@@ -47,7 +49,10 @@ def run_turn(body: dict[str, Any], state: State, client: OpenAI | None = None,
     turn = Turn(message=message, lake_url=lake_url, lake_token=token,
                 customer_id=body.get("customer_id") or "", page=body.get("page") or {},
                 conversation_id=conversation)
-    answer = answer_turn(turn, state.history(conversation), client or OpenAI(), state.model, lake)
+    # The model is reached through lake with the turn's own key, which counts its tokens in the
+    # turn's workspace (lake#248); this agent holds no provider key.
+    model = client or gateway_client(lake_url, token)
+    answer = answer_turn(turn, state.history(conversation), model, state.model, lake)
     trace_id = str(uuid.uuid4())
     state.trace_dir.mkdir(parents=True, exist_ok=True)
     (state.trace_dir / f"{trace_id}.json").write_text(json.dumps(
