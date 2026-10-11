@@ -13,3 +13,4 @@
   methodology support.
 - [`solutions/`](solutions/) — live solution discovery, preview and sketch handling, policy and
   evidence reads, proposal enforcement and older-engine behavior.
+- [`mcp/`](mcp/) — the workspace's connected MCP tools, read as data, changes proposed (lake#652).
