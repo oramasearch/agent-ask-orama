@@ -41,3 +41,10 @@ offline (the fake lake as transport, a scripted model).
 unfinished turn as `failed` with its partial answer.
 
 Run all tests with `uv run pytest`.
+
+`test_methodology_draft.py` covers the `methodology_draft` turn (lake#688) with a scripted model
+and a fake package index: the three files with `interface`, `entrypoint` and `packages` set by the
+agent and an empty lock for the standard library; every wheel's hash from the index for a pinned
+package (`pypi_wheel_hashes` against an `httpx` MockTransport, a missing version named); the
+manifest checks as Lake reads them; one repair round with the failing findings, then `ok: false`
+with them; and the service routing the turn kind and tracing it without the key.

@@ -3,6 +3,9 @@
 Each prompt behavior change creates a new version; previous versions remain for trace history.
 `agent.py` selects the active version through `PROMPT_VERSION`.
 
+- `methodology_draft_v1.md` is the `methodology_draft` turn's own prompt (lake#688,
+  `methodology_draft.py`, `DRAFT_PROMPT_VERSION`): the manifest, the fit/predict/score interface
+  and the Data object, standard library preferred, pins without hashes (the agent looks them up).
 - `v12.md` names Design (projects, Pipelines, solutions, agents) and Train (agents to train, runs,
   experiments, models), sends a new agent to Design → Agents or the Agent Factory and improving one
   to Train → Agents, and speaks of designing an agent on `/design/agents` and `/design/agent` and of

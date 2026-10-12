@@ -14,7 +14,7 @@
 - [`models/`](models/) — `compare_models` for "which model scored best" (held-out scores in one
   read), and how a turn that runs out of tool rounds ends as failed with an honest partial answer.
 - [`methodologies/`](methodologies/) — how Ask Orama discovers and enforces the engine's current
-  methodology support.
+  methodology support, and how it drafts a workspace methodology's files (lake#688).
 - [`solutions/`](solutions/) — live solution discovery, preview and sketch handling, policy and
   evidence reads, proposal enforcement and older-engine behavior.
 - [`mcp/`](mcp/) — the workspace's connected MCP tools, read as data, changes proposed (lake#652).

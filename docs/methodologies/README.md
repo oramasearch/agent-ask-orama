@@ -57,3 +57,37 @@ The unit tests fake lake and Zetta responses for a runnable M-3 registry entry, 
 entry with its issue, and an old engine's `unknown_capability` response. The live eval runner adds
 fixed questions for customer segmentation and speech analytics and grades the answers against the
 registry it reads at run time.
+
+## Drafting a workspace methodology (lake#688)
+
+Lake's Design → Methodologies → New methodology drawer has an **Ask Orama** button. It sends Ask
+Orama a `methodology_draft` turn through `agent_turn` (lake's agent bus, like every library-agent
+turn): the person's description as the message, and `context` with the `name` and `target_kind`
+they chose. That turn is not a conversation: `service.run_turn` hands it to
+`methodology_draft.py`, which answers the three files of a methodology
+(lake `docs/api/methodologies.md`):
+
+- `methodology.json`: the manifest the model wrote, with `interface: 1`, `entrypoint:
+  methodology.py` and `packages: requirements.lock` set by the agent;
+- `methodology.py`: `fit`, `predict` and `score` (and `explain` when declared) at module level;
+- `requirements.lock`: empty for the standard library (what the prompt prefers), or each package
+  the model pinned (`name==version`, every dependency listed, as they install with `--no-deps`)
+  followed by `--hash=sha256:` for **every wheel the Python package index has for that version**.
+  The model never writes a hash; `pypi_wheel_hashes` reads them from
+  `https://pypi.org/pypi/<name>/<version>/json`. A pin the index does not have, or that has no
+  wheels, is a finding.
+
+Before answering, the draft is checked the way Lake's Validate checks code without running it:
+the manifest's fields (`check_manifest`: name, input kinds, target and `required`, metrics,
+parameters with defaults inside their bounds or choices), `fit`/`predict`/`score` defined at
+module level (`check_entrypoint`, parsed, never imported), and the lock. A draft that fails gets
+one more model round with the failing findings; one that still fails answers `ok: false` with
+`findings`, which lake's bus records as `failed`, and Lake offers its own template instead.
+
+A passing draft is `{ok: true, reply, result: {kind: "methodology_draft", name, reason, files,
+findings, prompt_version}}`. Lake reads it with `draft_methodology {task_id}`, checks the files
+again with its own manifest, entrypoint and lock checks (its checks are the authority), and only
+then offers it in the drawer for review. Nothing is written until the person presses Create.
+
+The prompt is `prompts/methodology_draft_v1.md`. The model is reached through lake's model gateway
+with the turn's own key, as for every turn, so its tokens are counted in the workspace.
