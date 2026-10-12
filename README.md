@@ -42,6 +42,12 @@ and calls this service for every message.
   methodology runnable; otherwise it names the methodology's Zetta issue. An older workspace
   without the registry is treated as supporting only M-1 churn / GBDT classification.
 
+- **It writes the first draft of a workspace methodology** (lake#688). Lake's New Methodology
+  drawer sends a `methodology_draft` turn; Ask Orama answers `methodology.json`, `methodology.py`
+  and a `requirements.lock` whose every pin carries the hashes of its wheels from the package index,
+  checked the way Lake's Validate checks code before anything runs. Nothing is written: the person
+  reviews it and Create commits it ([`docs/methodologies/`](docs/methodologies/#drafting-a-workspace-methodology-lake688)).
+
 - **It compares trained models in one read.** `compare_models` lists every model (or one
   project's) with its held-out scores, best first, from the workspace's `list_models`, so "which
   model scored best" is answered within the turn (agent-ask-orama#14, [`docs/models/`](docs/models/)).
@@ -117,7 +123,9 @@ App actions, ExperimentsAgent routing and confirmation isolation, solution catal
 policy/readout behavior, solution and policy proposals that are never sent, unknown capabilities
 as observations, `compare_models` ranking held-out scores, a turn out of tool rounds ending
 unfinished (and published as `failed`), the service's conversation and a trace without the key,
-and the eval grader.
+the eval grader, and the `methodology_draft` turn (three files, lock hashes from the index, the
+manifest and entrypoint checks, one repair round, a failing draft answered with its findings, and
+its trace without the key).
 
 ## Documentation
 
@@ -128,7 +136,7 @@ and the eval grader.
 - [`docs/models/`](docs/models/) — comparing trained models by held-out score
   (`compare_models`), and how a turn out of tool rounds ends as failed with a partial answer.
 - [`docs/methodologies/`](docs/methodologies/) — registry reads, proposal enforcement, graph
-  explanations and old-engine behavior.
+  explanations, old-engine behavior, and drafting a workspace methodology (lake#688).
 - [`docs/solutions/`](docs/solutions/) — catalogue reads, preview and sketch behavior, policy and
   evidence reads, proposal enforcement and old-engine behavior.
 

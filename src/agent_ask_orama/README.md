@@ -9,7 +9,9 @@ registries, compares trained models by held-out score (`compare_models`), and en
 out of tool rounds with an honest partial answer marked `incomplete`. `evals.py` generates live capability cases and adds fixed App/build and experiment
 cases, registry-graded methodology and solution questions, a measured solution readout, a model-score case, and a workspace-entities case (an experiment,
 a search index and an agent).
-`service.py` exposes the turn API, while `lake_bus.py` receives delegated turns from lake.
+`methodology_draft.py` answers lake's `methodology_draft` turns (lake#688): the three files of a
+workspace methodology, the lock's hashes looked up in the package index, checked before they are
+offered. `service.py` exposes the turn API and routes that turn kind there, while `lake_bus.py` receives delegated turns from lake.
 
 Prompt text lives in [`prompts/`](prompts/). Domain behavior is documented in
 [`../../docs/apps/`](../../docs/apps/), [`../../docs/methodologies/`](../../docs/methodologies/) and

@@ -3,6 +3,9 @@
 Each prompt behavior change creates a new version; previous versions remain for trace history.
 `agent.py` selects the active version through `PROMPT_VERSION`.
 
+- `methodology_draft_v1.md` is the `methodology_draft` turn's own prompt (lake#688,
+  `methodology_draft.py`, `DRAFT_PROMPT_VERSION`): the manifest, the fit/predict/score interface
+  and the Data object, standard library preferred, pins without hashes (the agent looks them up).
 - `v11.md` drops the hand-kept engine reads and the `workspace_query` / `workspace_act` form
   wherever lake names the engine capability itself (lake#650): workspace data is read and proposed
   by its own name from the live lists, with a line for an older lake; the solution registry stays

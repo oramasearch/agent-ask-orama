@@ -21,6 +21,7 @@ from openai import OpenAI
 
 from agent_ask_orama import lake_bus
 from agent_ask_orama.agent import PROMPT_VERSION, Turn, answer_turn
+from agent_ask_orama.methodology_draft import methodology_draft_turn
 from agent_ask_orama.model import gateway_client
 
 
@@ -46,6 +47,8 @@ def run_turn(body: dict[str, Any], state: State, client: OpenAI | None = None,
     if not message or not token or not lake_url:
         return {"ok": False, "error": "a turn needs a message, the person's lake_token and lake"}
     conversation = body.get("conversation_id") or str(uuid.uuid4())
+    if body.get("kind") == "methodology_draft":
+        return run_methodology_draft(body, state, conversation, token, lake_url, client)
     turn = Turn(message=message, lake_url=lake_url, lake_token=token,
                 customer_id=body.get("customer_id") or "", page=body.get("page") or {},
                 conversation_id=conversation)
@@ -66,6 +69,22 @@ def run_turn(body: dict[str, Any], state: State, client: OpenAI | None = None,
         return {"ok": False, "error": answer.reply, "conversation_id": conversation,
                 "trace_id": trace_id, **answer.as_dict()}
     return {"ok": True, "conversation_id": conversation, "trace_id": trace_id, **answer.as_dict()}
+
+
+def run_methodology_draft(body: dict[str, Any], state: State, conversation: str, token: str,
+                          lake_url: str, client: OpenAI | None = None) -> dict[str, Any]:
+    """Lake's New Methodology drawer asks for a first draft (lake#688): the three files of a
+    methodology, checked, for the person to review. Nothing is written."""
+    model = client or gateway_client(lake_url, token)
+    answer = methodology_draft_turn(body, model, state.model)
+    trace_id = str(uuid.uuid4())
+    state.trace_dir.mkdir(parents=True, exist_ok=True)
+    (state.trace_dir / f"{trace_id}.json").write_text(json.dumps(
+        {"trace_id": trace_id, "agent": "agent-ask-orama", "kind": "methodology_draft",
+         "at": datetime.now(timezone.utc).isoformat(), "conversation_id": conversation,
+         "message": body.get("message") or "", "context": body.get("context") or {},
+         "answer": answer}, indent=1, default=str))
+    return {**answer, "conversation_id": conversation, "trace_id": trace_id}
 
 
 def serve() -> int:
