@@ -862,6 +862,7 @@ def test_evals_are_generated_from_the_index_and_graded_by_rules():
         "solution_readout",
         "model_scores",
         "workspace_entities",
+        "count",
         "agent_place",
         "agent_page",
     }
@@ -1544,6 +1545,151 @@ def test_the_workspace_entities_eval_needs_an_experiment_an_index_and_an_agent()
     no_index = {**named, "reads": named["reads"][::2]}
     graded = evals.grade(case, no_index, index, [])
     assert not graded.passed and graded.reasons == ["did not read list_indexes"]
+
+
+# agent-ask-orama#21: a long list is trimmed by its items and says how many there are.
+def dataset(number):
+    """A dataset summary as the engine's list_datasets answers it: a schema per column."""
+    return {"database": "datasets", "name": f"dataset_{number:03d}", "rows": 1000 + number,
+            "format": "parquet", "size_bytes": 4096 * number,
+            "schema": [{"name": f"column_{column}", "type": "double", "nullable": True,
+                        "description": "a measured value " * 4} for column in range(12)],
+            "partitions": [{"node": f"node-{node}", "rows": 300} for node in range(3)]}
+
+
+DATASETS = [dataset(number) for number in range(1, 64)]  # 63: longer than one observation
+
+
+class LongListLake(FakeLake):
+    def engine(self, sent):
+        if sent.get("capability") == "list_datasets":
+            return httpx.Response(200, json={"ok": True, "value": {"datasets": DATASETS}})
+        return super().engine(sent)
+
+
+def test_a_long_list_is_trimmed_by_items_and_the_agent_gets_the_exact_count():
+    assert len(json.dumps({"datasets": DATASETS})) > agent.OBSERVATION_LIMIT, \
+        "the fake is longer than one observation, as the dev Lake's was"
+    fake = LongListLake()
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="workspace_query",
+                                 input={"capability": "list_datasets", "input": {}})]),
+        message(content="There are 63 datasets in this workspace."))
+    answer = run(client, fake, message="How many datasets are in this workspace?")
+    seen = client.seen[1][-1]["content"]
+    assert len(seen) <= agent.OBSERVATION_LIMIT
+    observed = json.loads(seen)  # whole JSON, never cut mid-item
+    trimmed = observed[agent.TRIM_KEY]
+    assert trimmed["lists"]["datasets"]["count"] == 63
+    assert trimmed["lists"]["datasets"]["shown"] == len(observed["datasets"]) == 63, \
+        "every item, with only its scalar fields, fits"
+    assert "63 items in this answer" in trimmed["note"]
+    assert observed["datasets"][0] == {"database": "datasets", "name": "dataset_001",
+                                       "rows": 1001, "format": "parquet", "size_bytes": 4096}
+    assert answer.reply == "There are 63 datasets in this workspace."
+
+
+def test_when_even_compact_items_do_not_fit_it_says_how_many_it_kept():
+    many = {"datasets": [{"name": f"dataset_{n:04d}", "description": "x" * 150}
+                         for n in range(400)]}
+    seen = agent.fit(many, limit=8000)
+    assert len(seen) <= 8000
+    observed = json.loads(seen)
+    lists = observed[agent.TRIM_KEY]["lists"]["datasets"]
+    assert lists["count"] == 400 and 0 < lists["shown"] < 400
+    assert len(observed["datasets"]) == lists["shown"]
+    assert f"the first {lists['shown']} shown" in observed[agent.TRIM_KEY]["note"]
+    assert "400 items in this answer" in observed[agent.TRIM_KEY]["note"]
+
+
+def test_a_list_at_the_top_level_is_counted_too():
+    observed = json.loads(agent.fit([{"name": "n" * 300, "nested": {"a": 1}}] * 100,
+                                    limit=6000))
+    assert observed[agent.TRIM_KEY]["lists"]["items"]["count"] == 100
+    assert observed["items"][0] == {"name": "n" * agent.COMPACT_STRING + "..."}
+
+
+def test_a_short_answer_goes_as_it_is():
+    value = {"datasets": [{"name": "accounts", "rows": 200}]}
+    assert agent.fit(value) == json.dumps(value)
+
+
+def test_a_paged_answer_gives_the_capabilitys_total_and_the_next_cursor():
+    value = {"transcripts": [{"id": f"t-{n}"} for n in range(20)], "total": 120,
+             "next_cursor": "t-19"}
+    observed = json.loads(agent.fit(value))
+    lists = observed[agent.TRIM_KEY]["lists"]["transcripts"]
+    assert lists == {"count": 20, "shown": 20, "total": 120}
+    note = observed[agent.TRIM_KEY]["note"]
+    assert "The capability's own total is 120." in note
+    assert 'cursor="t-19"' in note
+    unknown = json.loads(agent.fit({"items": [{"id": 1}], "done": False}))
+    assert "total is unknown until the last page" in unknown[agent.TRIM_KEY]["note"]
+    finished = {"items": [{"id": 1}], "next_cursor": None, "done": True}
+    assert agent.fit(finished) == json.dumps(finished), "the last page is all of it"
+
+
+def test_a_long_answer_with_no_list_is_cut_and_says_so():
+    seen = agent.fit({"report": "y" * 30000}, limit=5000)
+    assert len(seen) <= 5000
+    assert "[OBSERVATION CUT at 5000 of" in seen and "Do not count what is shown." in seen
+
+
+def count_answer(reply, capability="workspace_query", operation="list_datasets"):
+    read = ({"capability": capability, "input": {"capability": operation}, "ok": True}
+            if capability == "workspace_query" else {"capability": capability, "input": {},
+                                                     "ok": True})
+    return {"reply": reply, "reads": [read], "proposals": [], "delegations": []}
+
+
+def test_the_count_evals_grade_the_exact_number():
+    from agent_ask_orama import evals
+    index = agent.capability_index(OPENAPI)
+    cases = {case.expect: case for case in evals.generate(index) if case.kind == "count"}
+    assert set(cases) == {"list_datasets", "list_models", "list_runs"}
+    datasets = cases["list_datasets"]
+    assert datasets.message == "How many datasets are in this workspace?"
+    counts = {"list_datasets": 63, "list_models": 7, "list_runs": None}
+    assert evals.grade(datasets, count_answer("There are 63 datasets."), index, [],
+                       counts=counts).passed
+    graded = evals.grade(datasets, count_answer("There are at least 25 datasets; the tool output "
+                                                "was cut off."), index, [], counts=counts)
+    assert not graded.passed
+    assert "did not answer the exact count 63" in graded.reasons
+    assert any(reason.startswith("hedged the count") for reason in graded.reasons)
+    assert not evals.grade(datasets, count_answer("There are 630 datasets."), index, [],
+                           counts=counts).passed
+    assert not evals.grade(datasets, count_answer("There are 6.3 dozen."), index, [],
+                           counts=counts).passed
+    unread = {**count_answer("There are 63 datasets."), "reads": []}
+    assert "did not read list_datasets" in evals.grade(datasets, unread, index, [],
+                                                       counts=counts).reasons
+    named_index = agent.capability_index(NAMED_OPENAPI)
+    models = cases["list_models"]
+    assert evals.grade(models, count_answer("You have 7 trained models.", "list_models"),
+                       named_index, [], counts=counts).passed
+    runs = cases["list_runs"]
+    assert "eval could not read list_runs to know the count" in evals.grade(
+        runs, count_answer("12 runs.", operation="list_runs"), index, [],
+        counts=counts).reasons
+
+
+def test_the_count_eval_reads_each_count_from_the_live_lake_first():
+    from agent_ask_orama import evals
+
+    class Counting(LongListLake):
+        def engine(self, sent):
+            if sent.get("capability") == "list_runs":
+                return httpx.Response(200, json={"ok": True, "value": {
+                    "runs": [{"id": "r-1"}], "total": 41}})
+            return super().engine(sent)
+
+    for openapi in (OPENAPI, NAMED_OPENAPI):
+        fake = Counting(openapi=openapi)
+        index = agent.capability_index(openapi)
+        lake = agent.Lake(turn(), transport=httpx.MockTransport(fake))
+        counts = evals.read_counts(lake, index, "c-1")
+        assert counts == {"list_datasets": 63, "list_models": len(MODELS), "list_runs": 41}
 
 
 def test_the_prompt_names_design_agents_and_train_agents():
