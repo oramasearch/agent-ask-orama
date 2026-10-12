@@ -26,6 +26,9 @@ Graded deterministically, never by a judge:
   read each, by lake's named capability or through `workspace_query` (agent-ask-orama#16);
 - a **model score** question ("which of my models scored best") must read `list_models` (through
   `compare_models`) and answer with held-out figures (agent-ask-orama#14);
+- a **count** question ("how many datasets / models / runs are in this workspace") must read the
+  list and answer with the exact number the runner read from the same lake before the turn, with
+  no hedge such as "at least" or "cut off" (agent-ask-orama#21);
 - no turn may run out of tool rounds (`incomplete`).
 - every proposal and read must name a capability that exists (no invented names).
 
@@ -43,6 +46,7 @@ import argparse
 import json
 import os
 import random
+import re
 from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
@@ -87,6 +91,17 @@ METHODOLOGY_QUESTIONS = [
     ("M-14", "Can you do speech analytics?"),
 ]
 
+# Counts of a list that is often long (agent-ask-orama#21): (the list's key in the engine's
+# answer, the engine read, the question). Graded against the count the runner reads first.
+COUNT_QUESTIONS = [
+    ("datasets", "list_datasets", "How many datasets are in this workspace?"),
+    ("models", "list_models", "How many trained models are in this workspace?"),
+    ("runs", "list_runs", "How many runs are in this workspace?"),
+]
+# Words that say a count is not exact: the failure agent-ask-orama#21 fixed.
+COUNT_HEDGES = ("at least", "cut off", "truncated", "more than", "can't safely",
+                "cannot safely")
+
 SOLUTION_QUESTIONS = [
     ("S-1", "Is solution S-1 available for production use?"),
     ("B-1", "Can I build solution B-1?"),
@@ -106,7 +121,7 @@ WORKSPACE_ENTITY_READS = (
 class Case:
     id: str
     # change | read | clarify | delegate | experiment* | app_* | methodology | solution
-    # | model_scores | workspace_entities
+    # | model_scores | workspace_entities | count
     kind: str
     message: str
     expect: str     # the capability, or the agent key
@@ -167,12 +182,15 @@ def generate(index: dict[str, Capability], changes: int = 8, reads: int = 6,
                       "workspace?", "list_experiments,list_indexes,list_agents"))
     cases.append(Case("model-scores", "model_scores",
                       "Which of my trained models scored best on held-out AUC?", "list_models"))
+    for key, read, message in COUNT_QUESTIONS:
+        cases.append(Case(f"count-{key}", "count", message, read))
     return cases
 
 
 def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
           writes_sent: list[str], methodologies: MethodologyCatalog | None = None,
-          solutions: SolutionCatalog | None = None) -> Graded:
+          solutions: SolutionCatalog | None = None,
+          counts: dict[str, int | None] | None = None) -> Graded:
     reasons: list[str] = []
     named = [p["capability"] for p in answer["proposals"]] + [r["capability"]
                                                                for r in answer["reads"]]
@@ -234,6 +252,8 @@ def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
         for alternatives in WORKSPACE_ENTITY_READS:
             if not read & alternatives:
                 reasons.append(f"did not read {' or '.join(sorted(alternatives))}")
+    elif case.kind == "count":
+        grade_count(case, answer, (counts or {}).get(case.expect), reasons)
     elif case.kind == "app_list":
         require_reads(answer, ["list_apps"], reasons)
     elif case.kind == "app_health":
@@ -310,6 +330,48 @@ def require_reads(answer: dict[str, Any], expected: list[str], reasons: list[str
     for capability in expected:
         if capability not in called:
             reasons.append(f"did not read {capability}")
+
+
+def grade_count(case: Case, answer: dict[str, Any], expected: int | None,
+                reasons: list[str]) -> None:
+    """The exact count of a list, read before the turn, with no hedge (agent-ask-orama#21)."""
+    if case.expect not in read_anything(answer):
+        reasons.append(f"did not read {case.expect}")
+    if expected is None:
+        reasons.append(f"eval could not read {case.expect} to know the count")
+        return
+    reply = answer["reply"]
+    if not re.search(rf"(?<![\d.,]){expected}(?![\d]|[.,]\d)", reply):
+        reasons.append(f"did not answer the exact count {expected}")
+    hedged = [hedge for hedge in COUNT_HEDGES if hedge in reply.lower()]
+    if hedged:
+        reasons.append(f"hedged the count: {hedged}")
+
+
+def read_counts(lake: Lake, index: dict[str, Capability],
+                customer_id: str) -> dict[str, int | None]:
+    """How many items each count case's list holds, read once before the turns: the list's
+    length, or the capability's own `total`. None when the read fails."""
+    counts: dict[str, int | None] = {}
+    for key, read, _ in COUNT_QUESTIONS:
+        named = index.get(read)
+        if named is not None:
+            body = lake.call(named.name, with_customer(named, {}, customer_id), read=named.get)
+        elif "workspace_query" in index:
+            query = index["workspace_query"]
+            body = lake.call(query.name, with_customer(query, {"capability": read, "input": {}},
+                                                       customer_id), read=query.get)
+        else:
+            counts[read] = None
+            continue
+        value = body.get("value") if body.get("ok") else None
+        items = value.get(key) if isinstance(value, dict) else None
+        total = value.get("total") if isinstance(value, dict) else None
+        if isinstance(total, int) and not isinstance(total, bool):
+            counts[read] = total
+        else:
+            counts[read] = len(items) if isinstance(items, list) else None
+    return counts
 
 
 def grade_solution_answer(case: Case, reply: str, catalog: SolutionCatalog,
@@ -416,6 +478,7 @@ def main() -> int:
     index = capability_index(probe.openapi())
     methodologies = read_methodologies(probe, index, base.customer_id)
     solutions = read_solutions(probe, index, base.customer_id)
+    counts = read_counts(probe, index, base.customer_id)
     probe.close()
     client = OpenAI()
     results: list[Graded] = []
@@ -430,7 +493,8 @@ def main() -> int:
                       "delegations": [], "rounds": 0}
         finally:
             lake.close()
-        results.append(grade(case, answer, index, recording.writes, methodologies, solutions))
+        results.append(grade(case, answer, index, recording.writes, methodologies, solutions,
+                             counts))
     passed = sum(result.passed for result in results)
     args.out.mkdir(parents=True, exist_ok=True)
     stamp = date.today().isoformat()

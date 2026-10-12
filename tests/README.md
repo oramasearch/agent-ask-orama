@@ -24,6 +24,12 @@ turn's registries; an older lake's named calls go through `workspace_query` / `w
 the engine's name; `compare_models` reads the named `list_models`; prompt v11 keeps no hand-kept
 engine call; and the workspace-entities eval needs an experiment, an index and an agent read.
 
+Its read coverage (agent-ask-orama#21) reads a fake `list_datasets` of 63 datasets with full
+schemas, longer than one observation, and checks the model sees whole JSON with the exact count;
+a list too long even compact keeps as many items as fit and says how many; a paged answer gives
+the capability's total and the next cursor; a value with no list is cut with a note; and the count
+evals pass only the exact number, read first from the lake, with no hedge.
+
 `test_lake_bus.py` covers task receipt and result publication on lake's agent bus, and publishes an
 unfinished turn as `failed` with its partial answer.
 

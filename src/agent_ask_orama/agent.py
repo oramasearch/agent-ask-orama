@@ -573,9 +573,129 @@ def with_customer(capability: Capability | None, arguments: dict[str, Any],
 
 def observation(body: dict[str, Any]) -> str:
     if body.get("ok"):
-        return json.dumps(body.get("value"), default=str)[:20000]
+        return fit(body.get("value"))
     error = body.get("error") or {}
     return f"FAILED: {error.get('code', '')} {error.get('message', '')}".strip()
+
+
+# What one read may hand the model, in characters of JSON. A longer answer is trimmed by its
+# items, never cut mid-text, and says what it kept (agent-ask-orama#21).
+OBSERVATION_LIMIT = 20000
+# Where an observation says what was trimmed and how many items there are.
+TRIM_KEY = "_observation"
+COMPACT_STRING = 200
+
+
+def fit(value: Any, limit: int = OBSERVATION_LIMIT) -> str:
+    """A read's value as JSON within `limit`, never silently shortened (agent-ask-orama#21).
+
+    A value that fits goes as it is. One that does not is trimmed by its lists' items: first
+    every item with only its own scalar fields, then as many of those as fit. Either way the
+    observation carries each list's count, taken before trimming (and the capability's own
+    `total` when it gives one), and how many items it shows, so a count is answered exactly. A
+    paged answer (`next_cursor`, `has_more`, `done: false`) says that more follow and how to
+    read them.
+    """
+    text = json.dumps(value, default=str)
+    paging = more_pages(value)
+    if len(text) <= limit and paging is None:
+        return text
+    if isinstance(value, dict):
+        container: dict[str, Any] = value
+    elif isinstance(value, list):
+        container = {"items": value}
+    else:
+        container = {}
+    lists = {key: items for key, items in container.items() if isinstance(items, list)}
+    if not lists:
+        return text if len(text) <= limit else cut(text, limit, {})
+    total = container.get("total") if len(lists) == 1 else None
+    declared = total if isinstance(total, int) and not isinstance(total, bool) else None
+
+    def render(cap: int | None, compact: bool) -> str:
+        shaped = dict(container)
+        counts: dict[str, Any] = {}
+        for key, items in lists.items():
+            kept = items if cap is None else items[:cap]
+            shaped[key] = [compact_item(item) for item in kept] if compact else kept
+            counts[key] = {"count": len(items), "shown": len(kept)}
+            if declared is not None:
+                counts[key]["total"] = declared
+            if compact:
+                counts[key]["detail"] = "scalar fields only"
+        shaped[TRIM_KEY] = {"lists": counts, "note": trim_note(counts, declared, paging)}
+        return json.dumps(shaped, default=str)
+
+    if len(text) <= limit:  # fits, but paged: say so
+        return render(None, False)
+    whole = render(None, True)
+    if len(whole) <= limit:
+        return whole
+    low, high = 0, max(len(items) for items in lists.values())
+    while low < high:  # the most compact items that fit
+        middle = (low + high + 1) // 2
+        if len(render(middle, True)) <= limit:
+            low = middle
+        else:
+            high = middle - 1
+    trimmed = render(low, True)
+    if len(trimmed) <= limit:
+        return trimmed
+    return cut(text, limit, {key: len(items) for key, items in lists.items()})
+
+
+def more_pages(value: Any) -> dict[str, Any] | None:
+    """How to read the next page of a paged answer, or None when this is all of it."""
+    if not isinstance(value, dict):
+        return None
+    if value.get("next_cursor"):
+        return {"cursor": value["next_cursor"]}
+    if value.get("has_more") is True or value.get("done") is False:
+        return {}
+    return None
+
+
+def compact_item(item: Any) -> Any:
+    """An item reduced to its own scalar fields, long strings shortened."""
+    if isinstance(item, dict):
+        return {key: compact_item(field_value) for key, field_value in item.items()
+                if not isinstance(field_value, (dict, list))}
+    if isinstance(item, str) and len(item) > COMPACT_STRING:
+        return item[:COMPACT_STRING] + "..."
+    return item
+
+
+def trim_note(counts: dict[str, Any], declared: int | None,
+              paging: dict[str, Any] | None) -> str:
+    """What the model is told about a trimmed or paged answer."""
+    parts = []
+    for key, count in counts.items():
+        shown = ("all shown" if count["shown"] == count["count"]
+                 else f"the first {count['shown']} shown")
+        parts.append(f"{key}: {count['count']} items in this answer, {shown}.")
+        if count.get("detail"):
+            parts.append(f"{key} items show only their own scalar fields; read one by its id "
+                         "for its detail.")
+    if declared is not None:
+        parts.append(f"The capability's own total is {declared}.")
+    if paging is not None:
+        unknown = "" if declared is not None else " and the total is unknown until the last page"
+        how = (f" Read again with cursor={json.dumps(paging['cursor'], default=str)} for the "
+               "next page." if "cursor" in paging else " Read the next page for the rest.")
+        parts.append(f"More items follow on later pages, so this answer is not all of them"
+                     f"{unknown}.{how}")
+    parts.append("These counts were taken before trimming: use them, not a count of the items "
+                 "shown.")
+    return " ".join(parts)
+
+
+def cut(text: str, limit: int, counts: dict[str, int]) -> str:
+    """The last resort for a value with no list to trim: cut, and say so plainly."""
+    counted = ("; its lists held " + ", ".join(f"{key}={count}" for key, count in counts.items())
+               + " items before cutting") if counts else ""
+    note = (f"\n[OBSERVATION CUT at {limit} of {len(text)} characters: the JSON above is "
+            f"incomplete{counted}. Do not count what is shown.]")
+    return text[:max(0, limit - len(note))] + note
 
 
 def answer_turn(turn: Turn, history: list[dict[str, Any]], client: OpenAI, model: str,

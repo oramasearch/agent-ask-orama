@@ -45,6 +45,10 @@ and calls this service for every message.
 - **It compares trained models in one read.** `compare_models` lists every model (or one
   project's) with its held-out scores, best first, from the workspace's `list_models`, so "which
   model scored best" is answered within the turn (agent-ask-orama#14, [`docs/models/`](docs/models/)).
+- **A long list is counted, never cut silently.** A read longer than one observation is trimmed
+  by its items, not sliced mid-text, and carries each list's count taken before trimming (or the
+  capability's own `total`) and how many items it shows; a paged answer says more follow
+  (agent-ask-orama#21, [`docs/reads/`](docs/reads/)).
 - **An unfinished turn is never a success.** When the tool rounds run out, Ask Orama says it did
   not finish, what it found and what is still unknown; the turn answers `ok: false` with
   `incomplete: true`, and lake's agent bus records it as `failed`.
@@ -88,7 +92,9 @@ whether customer segmentation and speech analytics run; they are graded against 
 including the tracking issue when support is absent. Fixed solution cases grade S-1 and B-1
 against the live catalogue, and a measured-readout case requires `get_roi_readout` after
 `list_solutions`. A model-score case asks which trained model scored best and requires `list_models`
-and a held-out figure in the reply; every case fails when its turn ran out of tool rounds. Change and read cases sample only capabilities whose required inputs are the
+and a held-out figure in the reply. Count cases ask how many datasets, trained models and runs the
+workspace has and grade the exact number the runner read first, failing a hedge such as "at
+least" or "cut off" (agent-ask-orama#21). Every case fails when its turn ran out of tool rounds. Change and read cases sample only capabilities whose required inputs are the
 space alone, so they can be done as asked.
 
 ```sh
@@ -115,12 +121,15 @@ proposed and never sent, methodology registry enforcement and the old-engine fal
 through lake, App and build reads with retained events, ApplicationAgent app turns, proposal-only
 App actions, ExperimentsAgent routing and confirmation isolation, solution catalogue and
 policy/readout behavior, solution and policy proposals that are never sent, unknown capabilities
-as observations, `compare_models` ranking held-out scores, a turn out of tool rounds ending
+as observations, `compare_models` ranking held-out scores, a long list trimmed by its items with
+its exact count and a paged answer's total and cursor, a turn out of tool rounds ending
 unfinished (and published as `failed`), the service's conversation and a trace without the key,
 and the eval grader.
 
 ## Documentation
 
+- [`docs/reads/`](docs/reads/) — what one read hands the model: a long list trimmed by its items
+  with its exact count, paged answers, and the said cut of last resort.
 - [`docs/apps/`](docs/apps/) — App and build reads, event-stream diagnosis, ApplicationAgent
   delegation and proposal-only actions.
 - [`docs/experiments/`](docs/experiments/) — ExperimentsAgent turn routing, proposal/result
