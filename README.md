@@ -94,7 +94,10 @@ against the live catalogue, and a measured-readout case requires `get_roi_readou
 `list_solutions`. A model-score case asks which trained model scored best and requires `list_models`
 and a held-out figure in the reply. Count cases ask how many datasets, trained models and runs the
 workspace has and grade the exact number the runner read first, failing a hedge such as "at
-least" or "cut off" (agent-ask-orama#21). Every case fails when its turn ran out of tool rounds. Change and read cases sample only capabilities whose required inputs are the
+least" or "cut off" (agent-ask-orama#21). Fixed agent cases (agent-ask-orama#19) require a new agent to be
+sent to Design → Agents or the Agent Factory and improving one to Train → Agents, and a turn asked
+from `/design/agents`, `/design/agent` or `/train/agent` to speak of designing or training the
+agent; every case fails when its turn ran out of tool rounds. Change and read cases sample only capabilities whose required inputs are the
 space alone, so they can be done as asked.
 
 ```sh
@@ -122,12 +125,15 @@ through lake, App and build reads with retained events, ApplicationAgent app tur
 App actions, ExperimentsAgent routing and confirmation isolation, solution catalogue and
 policy/readout behavior, solution and policy proposals that are never sent, unknown capabilities
 as observations, `compare_models` ranking held-out scores, a long list trimmed by its items with
-its exact count and a paged answer's total and cursor, a turn out of tool rounds ending
+its exact count and a paged answer's total and cursor, Design → Agents and Train → Agents in the prompt and a
+turn's agent page, the agent-place and agent-page evals run offline, a turn out of tool rounds ending
 unfinished (and published as `failed`), the service's conversation and a trace without the key,
 and the eval grader.
 
 ## Documentation
 
+- [`docs/agents/`](docs/agents/) — Design → Agents and the Agent Factory for designing an agent,
+  Train → Agents for training one (lake#653), and the agent pages a turn is asked from.
 - [`docs/reads/`](docs/reads/) — what one read hands the model: a long list trimmed by its items
   with its exact count, paged answers, and the said cut of last resort.
 - [`docs/apps/`](docs/apps/) — App and build reads, event-stream diagnosis, ApplicationAgent

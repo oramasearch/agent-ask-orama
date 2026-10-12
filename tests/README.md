@@ -30,6 +30,13 @@ a list too long even compact keeps as many items as fit and says how many; a pag
 the capability's total and the next cursor; a value with no list is cut with a note; and the count
 evals pass only the exact number, read first from the lake, with no hedge.
 
+Its agent coverage (agent-ask-orama#19) checks that prompt v12 names Design → Agents, the Agent
+Factory and Train → Agents and drops "Train (agents, data, runs)"; that `/design/agents`,
+`/design/agents/new` and `/design/agent` (with or without `/w/<id>`) are design pages and
+`/train/agents` and `/train/agent` training pages, and that a turn from one tells the model so;
+and grades the `agent_place` and `agent_page` evals, running the page cases through `run_case`
+offline (the fake lake as transport, a scripted model).
+
 `test_lake_bus.py` covers task receipt and result publication on lake's agent bus, and publishes an
 unfinished turn as `failed` with its partial answer.
 

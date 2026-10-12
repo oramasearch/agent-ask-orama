@@ -508,7 +508,7 @@ def test_apps_are_listed_from_lake():
         message(tool_calls=[call("lake_read", capability="list_apps")]),
         message(content="You have one App, risk-console, and it is running."))
     answer = run(client, fake, message="What Apps do I have?")
-    assert "prompt v11" in client.seen[0][0]["content"]
+    assert "prompt v12" in client.seen[0][0]["content"]
     assert answer.reads == [{
         "capability": "list_apps",
         "input": {"customer_id": "c-1"},
@@ -863,6 +863,8 @@ def test_evals_are_generated_from_the_index_and_graded_by_rules():
         "model_scores",
         "workspace_entities",
         "count",
+        "agent_place",
+        "agent_page",
     }
     assert all(not index[c.expect].required for c in cases if c.kind in {"change", "read"}), \
         "a change or read case can be done as asked"
@@ -1040,7 +1042,7 @@ def test_a_runnable_methodology_can_be_proposed_after_reading_the_registry():
             impact="Recompiles segments as an M-3 Pipeline")]),
         message(content="I proposed the runnable M-3 segmentation Pipeline."))
     answer = run(client, fake, message="Can you segment my customers?")
-    assert "prompt v11" in client.seen[0][0]["content"]
+    assert "prompt v12" in client.seen[0][0]["content"]
     assert answer.proposals == [{
         "capability": "workspace_act",
         "input": {
@@ -1103,7 +1105,7 @@ def test_a_runnable_solution_is_read_from_the_registry_and_proposed():
             impact="Builds the S-1 level 1 Pipeline in retention")]),
         message(content="I proposed the S-1 level 1 Pipeline for your confirmation."))
     answer = run(client, fake, message="Build S-1 level 1 in retention from customers.")
-    assert "prompt v11" in client.seen[0][0]["content"]
+    assert "prompt v12" in client.seen[0][0]["content"]
     detail = client.seen[2][-1]["content"]
     assert "Customer retention" in detail
     assert "minimum_level" in detail
@@ -1688,3 +1690,95 @@ def test_the_count_eval_reads_each_count_from_the_live_lake_first():
         lake = agent.Lake(turn(), transport=httpx.MockTransport(fake))
         counts = evals.read_counts(lake, index, "c-1")
         assert counts == {"list_datasets": 63, "list_models": len(MODELS), "list_runs": 41}
+
+
+def test_the_prompt_names_design_agents_and_train_agents():
+    # lake#653: agents are designed in Design → Agents (or the Agent Factory) and trained in
+    # Train → Agents; the prompt says which is for what (agent-ask-orama#19).
+    from pathlib import Path
+
+    import agent_ask_orama
+    prompt = (Path(agent_ask_orama.__file__).parent / "prompts"
+              / f"{agent.PROMPT_VERSION}.md").read_text()
+    assert agent.PROMPT_VERSION == "v12"
+    assert "Design (projects,\nPipelines, solutions, agents)" in prompt
+    assert "Train (agents to train, runs, experiments, models)" in prompt
+    assert "Train (agents, data, runs)" not in prompt
+    for place in ("Design → Agents", "Agent Factory", "Train → Agents"):
+        assert place in prompt
+    for path in ("/design/agents", "/design/agent", "/train/agent"):
+        assert f"`{path}`" in prompt
+
+
+def test_an_agent_page_says_which_work_the_person_is_doing():
+    assert agent.agent_page_work({"path": "/design/agents"}) == "design"
+    assert agent.agent_page_work({"path": "/design/agents/new"}) == "design"
+    assert agent.agent_page_work({"path": "/w/ws-1/design/agent", "id": "a-1"}) == "design"
+    assert agent.agent_page_work({"path": "/train/agent", "id": "a-1"}) == "train"
+    assert agent.agent_page_work({"path": "/w/ws-1/train/agents"}) == "train"
+    for other in ({"path": "/train/runs"}, {"path": "/design/projects"},
+                  {"path": "/design/agent-library"}, {"path": "/w/agents"}, {}):
+        assert agent.agent_page_work(other) == ""
+    assert agent.page_text({}) == ""
+    assert agent.page_text({"path": "/ship/apps"}) == '\n\n(The person is on {"path": "/ship/apps"})'
+
+
+def test_a_turn_from_an_agent_page_carries_designing_or_training_to_the_model():
+    for path, said, unsaid in (("/design/agent", "Speak of designing it", "training"),
+                               ("/train/agent", "Speak of training it", "designing")):
+        client = Scripted(message(content="ok"))
+        run(client, FakeLake(), message="What next?", page={"path": path, "id": "a-1"})
+        asked = client.seen[0][-1]["content"]
+        assert asked.startswith("What next?") and path in asked and said in asked
+        assert unsaid not in asked
+
+
+def test_the_agent_place_evals_need_design_agents_for_new_and_train_agents_to_improve():
+    from agent_ask_orama import evals
+    index = agent.capability_index(OPENAPI)
+    cases = {c.id: c for c in evals.generate(index) if c.kind == "agent_place"}
+    new, improve = cases["agent-new"], cases["agent-improve"]
+
+    def said(reply):
+        return {"reply": reply, "reads": [], "proposals": [], "delegations": []}
+
+    assert evals.grade(new, said("Open **Design → Agents** and choose New agent."), index,
+                       []).passed
+    assert evals.grade(new, said("Describe it to the Agent Factory."), index, []).passed
+    assert evals.grade(new, said("Go to Design > Agents."), index, []).passed, "any arrow"
+    assert not evals.grade(new, said("Open Train → Agents and add one."), index, []).passed
+    assert evals.grade(improve, said("On Train -> Agents, open it and launch an experiment."),
+                       index, []).passed
+    assert not evals.grade(improve, said("Edit it in Design → Agents."), index, []).passed
+
+
+def test_the_agent_page_evals_run_from_the_page_and_speak_of_its_work():
+    # The eval harness runs offline here: lake is the MockTransport fake and the model a scripted
+    # client, so the page a case is asked from is shown to reach the turn and be graded.
+    from agent_ask_orama import evals
+    index = agent.capability_index(OPENAPI)
+    cases = {c.id: c for c in evals.generate(index) if c.kind == "agent_page"}
+    assert cases["page-design-agent"].page == {"path": "/design/agent", "id": "agent-1"}
+    base = turn(message="")
+    replies = {
+        "page-design-agents": "Here you design agents: New agent, or duplicate one of Orama's.",
+        "page-design-agent": "Refine its design: purpose, prompt and skills. Train it on "
+                             "Train → Agents once it has a model.",
+        "page-train-agent": "Training: its held-out score is falling, so launch an experiment "
+                            "to train a better version and promote it.",
+    }
+    for case_id, reply in replies.items():
+        client = Scripted(message(content=reply))
+        graded = evals.run_case(cases[case_id], base, index, client, "gpt-5.5",
+                                inner=httpx.MockTransport(FakeLake()))
+        assert graded.passed, (case_id, graded.reasons)
+        assert cases[case_id].page["path"] in client.seen[0][-1]["content"]
+    wrong = Scripted(message(content="Design it: change its prompt and skills, then design "
+                                     "a schedule."))
+    graded = evals.run_case(cases["page-train-agent"], base, index, wrong, "gpt-5.5",
+                            inner=httpx.MockTransport(FakeLake()))
+    assert graded.reasons == ["did not speak of training the agent on /train/agent"]
+    mixed = Scripted(message(content="Design it, design its prompt; training comes later."))
+    graded = evals.run_case(cases["page-train-agent"], base, index, mixed, "gpt-5.5",
+                            inner=httpx.MockTransport(FakeLake()))
+    assert graded.reasons == ["spoke of designing more than training on /train/agent"]

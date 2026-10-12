@@ -23,7 +23,7 @@ from typing import Any
 import httpx
 from openai import OpenAI
 
-PROMPT_VERSION = "v11"
+PROMPT_VERSION = "v12"
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_ROUNDS = 10
 OLD_ENGINE_ISSUE = "zetta#1061"
@@ -698,6 +698,38 @@ def cut(text: str, limit: int, counts: dict[str, int]) -> str:
     return text[:max(0, limit - len(note))] + note
 
 
+# Lake Console's two homes for agents (lake#653): Design → Agents designs one (the Agent Factory
+# included), Train → Agents trains one that learns. A turn asked from either page says which work
+# the person is doing, so the answer speaks of designing or of training the agent.
+AGENT_PAGES = {"design": ("agents", "agent"), "train": ("agents", "agent")}
+
+
+def agent_page_work(page: dict[str, Any]) -> str:
+    """`design` or `train` when the page is one of Lake's agent pages (`/design/agents`,
+    `/design/agents/new`, `/design/agent`, `/train/agents`, `/train/agent`, with or without the
+    workspace's `/w/<id>` prefix), else empty."""
+    path = str((page or {}).get("path") or "").split("?", 1)[0]
+    segments = [segment for segment in path.split("/") if segment]
+    if len(segments) >= 2 and segments[0] == "w":
+        segments = segments[2:]
+    if len(segments) >= 2 and segments[1] in AGENT_PAGES.get(segments[0], ()):
+        return segments[0]
+    return ""
+
+
+def page_text(page: dict[str, Any]) -> str:
+    """The page context appended to the person's message, with what an agent page is for."""
+    if not page:
+        return ""
+    text = f"\n\n(The person is on {json.dumps(page)}"
+    work = agent_page_work(page)
+    if work == "design":
+        text += ": Design → Agents, where an agent is designed. Speak of designing it"
+    elif work == "train":
+        text += ": Train → Agents, where an agent that learns is trained. Speak of training it"
+    return text + ")"
+
+
 def answer_turn(turn: Turn, history: list[dict[str, Any]], client: OpenAI, model: str,
                 lake: Lake | None = None) -> Answer:
     """Continue the conversation in `history` (system first when non-empty) by one turn."""
@@ -713,8 +745,7 @@ def answer_turn(turn: Turn, history: list[dict[str, Any]], client: OpenAI, model
             history.append({"role": "system", "content":
                             (PROMPTS / f"{PROMPT_VERSION}.md").read_text() + index_text(index)
                             + connected_text(connected)})
-        page = f"\n\n(The person is on {json.dumps(turn.page)})" if turn.page else ""
-        history.append({"role": "user", "content": turn.message + page})
+        history.append({"role": "user", "content": turn.message + page_text(turn.page)})
         for round_number in range(1, MAX_ROUNDS + 1):
             answer.rounds = round_number
             message = client.chat.completions.create(model=model, messages=history,
