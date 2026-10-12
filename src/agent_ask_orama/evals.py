@@ -26,6 +26,10 @@ Graded deterministically, never by a judge:
   read each, by lake's named capability or through `workspace_query` (agent-ask-orama#16);
 - a **model score** question ("which of my models scored best") must read `list_models` (through
   `compare_models`) and answer with held-out figures (agent-ask-orama#14);
+- a **new agent** request must send the person to Design → Agents or the Agent Factory, and an
+  **improve an agent** request to Train → Agents (lake#653, agent-ask-orama#19);
+- a turn asked from `/design/agents` or `/design/agent` must speak of designing the agent, and one
+  from `/train/agent` of training it, never of the other alone (agent-ask-orama#19);
 - no turn may run out of tool rounds (`incomplete`).
 - every proposal and read must name a capability that exists (no invented names).
 
@@ -43,7 +47,8 @@ import argparse
 import json
 import os
 import random
-from dataclasses import asdict, dataclass
+import re
+from dataclasses import asdict, dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -92,6 +97,23 @@ SOLUTION_QUESTIONS = [
     ("B-1", "Can I build solution B-1?"),
 ]
 
+# Where a person is sent for agent work (lake#653): `design` is Design → Agents or the Agent
+# Factory, `train` is Train → Agents.
+AGENT_PLACE_QUESTIONS = [
+    ("agent-new", "design",
+     "I want a new agent that triages our support tickets. Where do I make it?"),
+    ("agent-improve", "train",
+     "My support triage agent's answers are getting worse. How do I make it better?"),
+]
+
+# A question asked from one of Lake Console's agent pages, and the work the answer must speak of.
+AGENT_PAGE_QUESTIONS = [
+    ("page-design-agents", "design", {"path": "/design/agents"}, "What can I do here?"),
+    ("page-design-agent", "design", {"path": "/design/agent", "id": "agent-1"},
+     "What should I do next with this agent?"),
+    ("page-train-agent", "train", {"path": "/train/agent", "id": "agent-1"},
+     "What should I do next with this agent?"),
+]
 
 # The reads that answer "which experiments, search indexes and agents": each set is one entity,
 # by lake's name or the engine's.
@@ -109,7 +131,8 @@ class Case:
     # | model_scores | workspace_entities
     kind: str
     message: str
-    expect: str     # the capability, or the agent key
+    expect: str     # the capability, the agent key, or `design` / `train` for agent work
+    page: dict[str, Any] = field(default_factory=dict)  # the page the turn is asked from
 
 
 @dataclass
@@ -167,6 +190,10 @@ def generate(index: dict[str, Capability], changes: int = 8, reads: int = 6,
                       "workspace?", "list_experiments,list_indexes,list_agents"))
     cases.append(Case("model-scores", "model_scores",
                       "Which of my trained models scored best on held-out AUC?", "list_models"))
+    for case_id, work, message in AGENT_PLACE_QUESTIONS:
+        cases.append(Case(case_id, "agent_place", message, work))
+    for case_id, work, page, message in AGENT_PAGE_QUESTIONS:
+        cases.append(Case(case_id, "agent_page", message, work, page))
     return cases
 
 
@@ -234,6 +261,21 @@ def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
         for alternatives in WORKSPACE_ENTITY_READS:
             if not read & alternatives:
                 reasons.append(f"did not read {' or '.join(sorted(alternatives))}")
+    elif case.kind == "agent_place":
+        places = places_named(answer["reply"])
+        if case.expect == "design" and not places & {"design → agents", "agent factory"}:
+            reasons.append("did not send a new agent to Design → Agents or the Agent Factory")
+        if case.expect == "train" and "train → agents" not in places:
+            reasons.append("did not send improving an agent to Train → Agents")
+    elif case.kind == "agent_page":
+        own, other = ("design", "train") if case.expect == "design" else ("train", "design")
+        # Naming the other page ("train it on Train → Agents") is offering it, not speaking of it.
+        said = re.sub(r"(design|train) → agents", "", arrows(answer["reply"]))
+        mentions = {work: len(re.findall(rf"\b{work}", said)) for work in (own, other)}
+        if not mentions[own]:
+            reasons.append(f"did not speak of {own}ing the agent on {case.page['path']}")
+        elif mentions[other] > mentions[own]:
+            reasons.append(f"spoke of {other}ing more than {own}ing on {case.page['path']}")
     elif case.kind == "app_list":
         require_reads(answer, ["list_apps"], reasons)
     elif case.kind == "app_health":
@@ -285,6 +327,19 @@ def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
         else:
             grade_solution_answer(case, answer["reply"], solutions, reasons)
     return Graded(case, not reasons, reasons, answer)
+
+
+def places_named(reply: str) -> set[str]:
+    """The agent places a reply names, however its arrow is written (→, ->, >, ›)."""
+    text = arrows(reply)
+    return {place for place in ("design → agents", "train → agents", "agent factory")
+            if place in text}
+
+
+def arrows(reply: str) -> str:
+    """The reply in lower case, unformatted, with every page arrow written ` → `."""
+    text = re.sub(r"\s*(?:→|->|›|>)\s*", " → ", reply.lower().replace("*", "").replace("`", ""))
+    return re.sub(r"\s+", " ", text)
 
 
 def engine_reads(answer: dict[str, Any]) -> set[str]:
@@ -392,17 +447,38 @@ def read_solutions(lake: Lake, index: dict[str, Capability],
 class Recording(httpx.BaseTransport):
     """The real transport, noting every write lake receives (proposals must send none)."""
 
-    def __init__(self, index: dict[str, Capability]) -> None:
-        self.inner = httpx.HTTPTransport()
+    def __init__(self, index: dict[str, Capability],
+                 inner: httpx.BaseTransport | None = None) -> None:
+        self.inner = inner or httpx.HTTPTransport()
         self.writes: list[str] = []
+        # A read is a read however it is sent: lake takes some reads as a POST too (post_alias),
+        # as Ask Orama sends the connected-tools listing every turn (lake#652).
         self.read_posts = {f"/v1/{capability.name}" for capability in index.values()
-                           if capability.read and not capability.get}
+                           if capability.read}
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
-        read_posts = self.read_posts | {"/v1/agent_turn"}
+        read_posts = self.read_posts | {"/v1/agent_turn", "/v1/list_mcp_connection_tools"}
         if request.method == "POST" and request.url.path not in read_posts:
             self.writes.append(request.url.path)
         return self.inner.handle_request(request)
+
+
+def run_case(case: Case, base: Turn, index: dict[str, Capability], client: Any, model: str,
+             inner: httpx.BaseTransport | None = None,
+             methodologies: MethodologyCatalog | None = None,
+             solutions: SolutionCatalog | None = None) -> Graded:
+    """One case as a turn of its own, asked from its page, graded with the writes lake saw."""
+    recording = Recording(index, inner)
+    turn = Turn(**{**asdict(base), "message": case.message, "page": case.page})
+    lake = Lake(turn, transport=recording)
+    try:
+        answer = answer_turn(turn, [], client, model, lake).as_dict()
+    except Exception as error:  # a crash is a failed case, not a skipped one
+        answer = {"reply": f"{type(error).__name__}: {error}", "reads": [], "proposals": [],
+                  "delegations": [], "rounds": 0}
+    finally:
+        lake.close()
+    return grade(case, answer, index, recording.writes, methodologies, solutions)
 
 
 def main() -> int:
@@ -420,17 +496,8 @@ def main() -> int:
     client = OpenAI()
     results: list[Graded] = []
     for case in generate(index):
-        recording = Recording(index)
-        turn = Turn(**{**asdict(base), "message": case.message})
-        lake = Lake(turn, transport=recording)
-        try:
-            answer = answer_turn(turn, [], client, args.model, lake).as_dict()
-        except Exception as error:  # a crash is a failed case, not a skipped one
-            answer = {"reply": f"{type(error).__name__}: {error}", "reads": [], "proposals": [],
-                      "delegations": [], "rounds": 0}
-        finally:
-            lake.close()
-        results.append(grade(case, answer, index, recording.writes, methodologies, solutions))
+        results.append(run_case(case, base, index, client, args.model, methodologies=methodologies,
+                                solutions=solutions))
     passed = sum(result.passed for result in results)
     args.out.mkdir(parents=True, exist_ok=True)
     stamp = date.today().isoformat()
