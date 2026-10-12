@@ -94,7 +94,10 @@ whether customer segmentation and speech analytics run; they are graded against 
 including the tracking issue when support is absent. Fixed solution cases grade S-1 and B-1
 against the live catalogue, and a measured-readout case requires `get_roi_readout` after
 `list_solutions`. A model-score case asks which trained model scored best and requires `list_models`
-and a held-out figure in the reply; every case fails when its turn ran out of tool rounds. Change and read cases sample only capabilities whose required inputs are the
+and a held-out figure in the reply. Fixed agent cases (agent-ask-orama#19) require a new agent to be
+sent to Design → Agents or the Agent Factory and improving one to Train → Agents, and a turn asked
+from `/design/agents`, `/design/agent` or `/train/agent` to speak of designing or training the
+agent; every case fails when its turn ran out of tool rounds. Change and read cases sample only capabilities whose required inputs are the
 space alone, so they can be done as asked.
 
 ```sh
@@ -121,7 +124,8 @@ proposed and never sent, methodology registry enforcement and the old-engine fal
 through lake, App and build reads with retained events, ApplicationAgent app turns, proposal-only
 App actions, ExperimentsAgent routing and confirmation isolation, solution catalogue and
 policy/readout behavior, solution and policy proposals that are never sent, unknown capabilities
-as observations, `compare_models` ranking held-out scores, a turn out of tool rounds ending
+as observations, `compare_models` ranking held-out scores, Design → Agents and Train → Agents in the prompt and a
+turn's agent page, the agent-place and agent-page evals run offline, a turn out of tool rounds ending
 unfinished (and published as `failed`), the service's conversation and a trace without the key,
 the eval grader, and the `methodology_draft` turn (three files, lock hashes from the index, the
 manifest and entrypoint checks, one repair round, a failing draft answered with its findings, and
@@ -129,6 +133,8 @@ its trace without the key).
 
 ## Documentation
 
+- [`docs/agents/`](docs/agents/) — Design → Agents and the Agent Factory for designing an agent,
+  Train → Agents for training one (lake#653), and the agent pages a turn is asked from.
 - [`docs/apps/`](docs/apps/) — App and build reads, event-stream diagnosis, ApplicationAgent
   delegation and proposal-only actions.
 - [`docs/experiments/`](docs/experiments/) — ExperimentsAgent turn routing, proposal/result

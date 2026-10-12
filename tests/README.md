@@ -24,6 +24,13 @@ turn's registries; an older lake's named calls go through `workspace_query` / `w
 the engine's name; `compare_models` reads the named `list_models`; prompt v11 keeps no hand-kept
 engine call; and the workspace-entities eval needs an experiment, an index and an agent read.
 
+Its agent coverage (agent-ask-orama#19) checks that prompt v12 names Design → Agents, the Agent
+Factory and Train → Agents and drops "Train (agents, data, runs)"; that `/design/agents`,
+`/design/agents/new` and `/design/agent` (with or without `/w/<id>`) are design pages and
+`/train/agents` and `/train/agent` training pages, and that a turn from one tells the model so;
+and grades the `agent_place` and `agent_page` evals, running the page cases through `run_case`
+offline (the fake lake as transport, a scripted model).
+
 `test_lake_bus.py` covers task receipt and result publication on lake's agent bus, and publishes an
 unfinished turn as `failed` with its partial answer.
 

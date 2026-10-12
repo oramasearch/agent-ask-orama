@@ -1,5 +1,7 @@
 # Documentation
 
+- [`agents/`](agents/) — Design → Agents designs an agent (and the Agent Factory), Train → Agents
+  trains one that learns (lake#653); the agent pages a turn is asked from, and their evals.
 - [`capabilities/`](capabilities/) — the capability index from lake's OpenAPI, every workspace
   engine capability by its own name (lake#650), the older-lake fallback and the named list of
   ceremonies never offered.

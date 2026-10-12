@@ -6,6 +6,10 @@ Each prompt behavior change creates a new version; previous versions remain for 
 - `methodology_draft_v1.md` is the `methodology_draft` turn's own prompt (lake#688,
   `methodology_draft.py`, `DRAFT_PROMPT_VERSION`): the manifest, the fit/predict/score interface
   and the Data object, standard library preferred, pins without hashes (the agent looks them up).
+- `v12.md` names Design (projects, Pipelines, solutions, agents) and Train (agents to train, runs,
+  experiments, models), sends a new agent to Design → Agents or the Agent Factory and improving one
+  to Train → Agents, and speaks of designing an agent on `/design/agents` and `/design/agent` and of
+  training it on `/train/agents` and `/train/agent` (lake#653, agent-ask-orama#19).
 - `v11.md` drops the hand-kept engine reads and the `workspace_query` / `workspace_act` form
   wherever lake names the engine capability itself (lake#650): workspace data is read and proposed
   by its own name from the live lists, with a line for an older lake; the solution registry stays
