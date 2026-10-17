@@ -6,7 +6,7 @@ for an older engine, and deterministic grading of the segmentation and speech ev
 solution coverage includes a runnable entry, a preview with missing production components, a
 refused sketch, an older engine, policy and evidence reads, an unavailable operation, a policy
 proposal that is never sent, and deterministic solution eval grading. Its App coverage includes
-lists, current health with retained events, build-failure diagnosis, ApplicationAgent delegation
+lists, current health with retained events, build-failure diagnosis, Application Agent delegation
 with kind `app`, proposal-only actions and deterministic App eval grading.
 Its experiment coverage routes train, tune and best-model requests to `experiment`, progress to
 `experiment_status`, and divergence questions to `experiment_explain`; it also proves Ask Orama
@@ -36,6 +36,11 @@ Factory and Train → Agents and drops "Train (agents, data, runs)"; that `/desi
 `/train/agents` and `/train/agent` training pages, and that a turn from one tells the model so;
 and grades the `agent_place` and `agent_page` evals, running the page cases through `run_case`
 offline (the fake lake as transport, a scripted model).
+
+Its eval and corpus coverage (agent-ask-orama#28) checks that prompt v13 and the `delegate` tool
+offer `agent-eval-generator`, `agent-autosuggest-corpus` and `agent-project-corpus` under lake#763's
+names, with the eval and training-corpus routing rule, and that the prompt keeps none of the old
+names (ApplicationAgent, ExperimentsAgent, Corpus Generator).
 
 `test_lake_bus.py` covers task receipt and result publication on lake's agent bus, and publishes an
 unfinished turn as `failed` with its partial answer.
