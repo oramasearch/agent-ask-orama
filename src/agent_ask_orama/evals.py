@@ -12,6 +12,9 @@ Graded deterministically, never by a judge:
   required inputs are the space alone, so they can be done as asked);
 - a **Pipeline** request must delegate to `agent-project`, an **opportunity** request to
   `agent-autosuggest`, and an **App** request to `agent-application` with kind `app`;
+- an **eval** request must delegate to `agent-eval-generator`, and a **training corpus** request
+  to the matching corpus agent: `agent-autosuggest-corpus` for what-is-worth-building examples,
+  `agent-project-corpus` for pipeline-building examples (agent-ask-orama#28);
 - **training**, **tuning** and **best-model** requests must delegate to `agent-experiments` with
   kind `experiment`; progress requests use `experiment_status`, and divergence questions use
   `experiment_explain`;
@@ -80,6 +83,14 @@ DELEGATIONS = [
     ("agent-autosuggest", "Which opportunities does my data support? Rank them."),
     ("agent-application", "Build me an App that shows the highest-risk accounts."),
     ("agent-application", "Change App app-1 to show account risk drivers."),
+    # agent-ask-orama#28: evals and training corpora go to the agents that make them.
+    ("agent-eval-generator", "Create an eval for my support triage agent: realistic test cases "
+                             "to see how well it answers."),
+    ("agent-eval-generator", "I need test cases to evaluate my churn agent."),
+    ("agent-autosuggest-corpus", "Help me build a training corpus for the Auto-Suggest Agent: "
+                                 "examples of what is worth building for a logistics business."),
+    ("agent-project-corpus", "Build a training corpus of Pipeline-building examples on my "
+                             "workspace's data, to train the Project Agent."),
 ]
 
 EXPERIMENT_QUESTIONS = [
@@ -247,13 +258,13 @@ def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
         if not matching:
             reasons.append(f"did not delegate to {case.expect}")
         elif case.expect == "agent-application" and matching[0].get("kind") != "app":
-            reasons.append("did not delegate ApplicationAgent work with kind app")
+            reasons.append("did not delegate Application Agent work with kind app")
     elif case.kind in {"experiment", "experiment_status", "experiment_explain"}:
         matching = [d for d in answer["delegations"] if d["agent"] == case.expect]
         if not matching:
             reasons.append("did not delegate to agent-experiments")
         elif matching[0].get("kind") != case.kind:
-            reasons.append(f"did not use ExperimentsAgent turn kind {case.kind}")
+            reasons.append(f"did not use Experiments Agent turn kind {case.kind}")
         reply = answer["reply"].lower()
         if case.kind == "experiment":
             if not any(word in reply for word in ("proposal", "proposed")):

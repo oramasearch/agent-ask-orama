@@ -23,7 +23,7 @@ from typing import Any
 import httpx
 from openai import OpenAI
 
-PROMPT_VERSION = "v12"
+PROMPT_VERSION = "v13"
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_ROUNDS = 10
 OLD_ENGINE_ISSUE = "zetta#1061"
@@ -515,12 +515,18 @@ TOOLS = [
     {"type": "function", "function": {
         "name": "delegate",
         "description": "Hand a request to another agent and get its answer: a specialized agent of "
-                       "the Agent Library by key (agent-project builds and changes Pipelines, "
-                       "agent-autosuggest recommends Opportunities from a profile, "
-                       "agent-application builds and changes Apps, and agent-experiments designs, "
-                       "tracks, and explains training studies) or any agent the person built, by "
-                       "its id from list_agents. ApplicationAgent turns use kind app. "
-                       "ExperimentsAgent turns require kind experiment, experiment_status, or "
+                       "the Agent Library by key (agent-project, the Project Agent, builds and "
+                       "changes Pipelines; agent-autosuggest, the Auto-Suggest Agent, recommends "
+                       "Opportunities from a profile; agent-application, the Application Agent, "
+                       "builds and changes Apps; agent-experiments, the Experiments Agent, "
+                       "designs, tracks, and explains training studies; agent-eval-generator, the "
+                       "Eval Generator Agent, creates an eval: realistic test cases to evaluate an "
+                       "agent; agent-autosuggest-corpus, the Auto-Suggest Corpus Agent, builds a "
+                       "training corpus of what-is-worth-building examples; agent-project-corpus, "
+                       "the Project Corpus Agent, builds a training corpus of pipeline-building "
+                       "examples on the person's workspace) or any agent the person built, by "
+                       "its id from list_agents. Application Agent turns use kind app. "
+                       "Experiments Agent turns require kind experiment, experiment_status, or "
                        "experiment_explain. An agent that only runs unattended is started by "
                        "proposing launch_agent instead.",
         "parameters": {"type": "object", "properties": {
@@ -948,7 +954,7 @@ def handle(name: str, arguments: dict[str, Any], index: dict[str, Capability], t
             kind = arguments.get("kind")
             if kind not in EXPERIMENT_KINDS:
                 expected = ", ".join(sorted(EXPERIMENT_KINDS))
-                return f"FAILED: ExperimentsAgent requires one of these turn kinds: {expected}."
+                return f"FAILED: the Experiments Agent requires one of these turn kinds: {expected}."
             confirmation_fields = sorted(EXPERIMENT_CONFIRMATION_FIELDS.intersection(context))
             if confirmation_fields:
                 return (

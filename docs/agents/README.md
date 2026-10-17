@@ -55,3 +55,33 @@ page ("train it on Train → Agents") is offering it, not speaking of it, so it 
 case's `page` is sent with its turn (`run_case`). The runner also counts a POST to any read
 capability, and to `list_mcp_connection_tools`, as a read, so the connected-tools listing every
 turn sends (lake#652) is not graded as a write.
+
+## Evals and Training Corpora
+
+Steve, 2026-10-17: *"if I want lake to help me build a training corpus, I'll need the training
+corpus agent to do that for me"* and *"same with creating an eval"*
+([agent-ask-orama#28](https://github.com/oramasearch/agent-ask-orama/issues/28)). Lake lists all
+nine library agents as ordinary agents ([lake#788](https://github.com/oramasearch/lake/issues/788),
+lake PR #793), and `agent_turn` reaches each. Prompt `v9` had stopped offering three of them as
+Orama's internal tooling; prompt `v13` offers them again:
+
+| Key | Name | What a person asks for |
+|---|---|---|
+| `agent-eval-generator` | Eval Generator Agent | an eval: realistic test cases to evaluate an agent |
+| `agent-autosuggest-corpus` | Auto-Suggest Corpus Agent | a training corpus of what-is-worth-building examples |
+| `agent-project-corpus` | Project Corpus Agent | a training corpus of pipeline-building examples on the person's workspace |
+
+The routing rule: an eval, test cases or a test set go to the Eval Generator Agent; a training
+corpus goes to the corpus agent for the agent it trains (the Auto-Suggest Agent's to
+`agent-autosuggest-corpus`, the Project Agent's to `agent-project-corpus`). When the person does
+not say which, Ask Orama asks. It never writes an eval or a corpus itself. The `delegate` tool's
+description lists all three with the other library agents.
+
+`v13` also uses [lake#763](https://github.com/oramasearch/lake/issues/763)'s names everywhere:
+Project Agent, Application Agent, Experiments Agent, Auto-Suggest Agent, Agent Creator Agent (the
+agent behind the Agent Factory), Eval Generator Agent, Auto-Suggest Corpus Agent and Project Corpus
+Agent.
+
+`evals.py` grades four more `delegate` cases by rule: two eval requests must reach
+`agent-eval-generator`, an Auto-Suggest training-corpus request `agent-autosuggest-corpus`, and a
+Pipeline-building training-corpus request `agent-project-corpus`.

@@ -5,6 +5,8 @@
 **Agent Library**. lake shows it as a panel on every page ([lake#236](https://github.com/oramasearch/lake/issues/236))
 and calls this service for every message.
 
+**Current release: [v0.1.0](docs/releases/v0.1.0.md)** (2026-10-17, prompt v13).
+
 ## What it does
 
 - **Works as the person, never more.** Each turn carries the key lake delegates from the person's
@@ -13,10 +15,24 @@ and calls this service for every message.
   their workspace's engine by its own name (lake#650; through `workspace_query` on an older lake).
 - **Proposes, never writes** (`lake_propose`): a change comes back as a proposal with its impact;
   lake shows it and runs it only when the person confirms.
-- **Delegates to any agent** (`delegate`), through lake's `agent_turn`: the Project Agent
-  (`agent-project`) for Pipelines, ApplicationAgent (`agent-application`, kind `app`) for Apps,
-  ExperimentsAgent (`agent-experiments`) for training studies, Auto-Suggest (`agent-autosuggest`)
-  for Opportunities, and every agent the person built. An unattended agent is started by proposing
+- **Delegates to any agent** (`delegate`), through lake's `agent_turn`, under lake#763's names:
+  - the Project Agent (`agent-project`) for Pipelines;
+  - the Application Agent (`agent-application`, kind `app`) for Apps;
+  - the Experiments Agent (`agent-experiments`) for training studies;
+  - the Auto-Suggest Agent (`agent-autosuggest`) for Opportunities;
+  - the Eval Generator Agent (`agent-eval-generator`) to create an eval, realistic test cases to
+    evaluate an agent;
+  - the Auto-Suggest Corpus Agent (`agent-autosuggest-corpus`) for a training corpus of
+    what-is-worth-building examples;
+  - the Project Corpus Agent (`agent-project-corpus`) for a training corpus of pipeline-building
+    examples on the person's workspace;
+  - and every agent the person built.
+
+  An eval request goes to the Eval Generator Agent and a training-corpus request to the matching
+  corpus agent; when the person does not say which agent the corpus trains, Ask Orama asks
+  (prompt v13, [agent-ask-orama#28](https://github.com/oramasearch/agent-ask-orama/issues/28)).
+  The Agent Factory, where the Agent Creator Agent drafts a new agent, is a page in Design →
+  Agents, not a delegation. An unattended agent is started by proposing
   `launch_agent`. A library agent answers on lake's agent bus: `agent_turn` returns a task, and Ask
   Orama follows it with `receive_agent_events` for up to four minutes (lake#269). A subagent still
   working then is reported as working, with its task.
@@ -26,9 +42,9 @@ and calls this service for every message.
   ([`docs/capabilities/`](docs/capabilities/), agent-ask-orama#16).
 - **It knows Apps and builds.** It reads App desired and observed state plus retained App events,
   and reads build rows plus retained build events to explain failures. Building or changing an App
-  goes to ApplicationAgent. Deploys, rebuilds, rollbacks, scaling and every other App action remain
+  goes to Application Agent. Deploys, rebuilds, rollbacks, scaling and every other App action remain
   proposals until the person confirms them.
-- **It delegates training experiments.** Train, tune and best-model requests go to ExperimentsAgent
+- **It delegates training experiments.** Train, tune and best-model requests go to Experiments Agent
   as `experiment` turns; progress uses `experiment_status`; results and divergence explanations use
   `experiment_explain`. Ask Orama summarizes the returned proposal or result. It cannot forward a
   confirmed proposal or promotion; lake does that only after the person reviews and confirms it.
@@ -65,7 +81,7 @@ and calls this service for every message.
 
 | Route | What it does |
 |---|---|
-| `GET /healthz` | the model and prompt version |
+| `GET /healthz` | the agent, its release `version`, the model and prompt version |
 | `POST /v1/turn` | `{conversation_id, message, lake_token, customer_id, page, lake_url?}` → `{ok, conversation_id, trace_id, reply, reads, proposals, delegations, rounds, incomplete}`; a turn out of tool rounds is `ok: false` (HTTP 422) with its partial answer as `error` |
 
 `AGENT_SERVICE_TOKEN`, when set, is required as a bearer (only lake calls it). `LAKE_URL` is lake's
@@ -90,8 +106,9 @@ changes and reads, requests missing an input, plus delegations) and grades each 
 must be **proposed** with **no write sent**, a read must be called, a request that needs an id it
 does not give must be answered with a question or a lookup first (never a guessed value), a Pipeline
 request must reach `agent-project`, an opportunity request `agent-autosuggest`, an App request
-`agent-application` with kind `app`, and a training experiment request `agent-experiments` with the
-matching turn kind; nothing may name a capability lake does not have. Fixed App cases require the
+`agent-application` with kind `app`, an eval request `agent-eval-generator`, a training-corpus
+request `agent-autosuggest-corpus` or `agent-project-corpus` (agent-ask-orama#28), and a training
+experiment request `agent-experiments` with the matching turn kind; nothing may name a capability lake does not have. Fixed App cases require the
 App list, current state with events, and the last build with build events. Fixed experiment cases
 cover train, tune, best-model, progress and divergence requests. Fixed methodology cases ask
 whether customer segmentation and speech analytics run; they are graded against the live registry,
@@ -127,8 +144,9 @@ buildctl --addr "kube-pod://<buildkit pod>?context=orama-production-cluster-01&n
 
 `uv run pytest`: the index without ceremonies, reads as the person in their space, a change that is
 proposed and never sent, methodology registry enforcement and the old-engine fallback, delegation
-through lake, App and build reads with retained events, ApplicationAgent app turns, proposal-only
-App actions, ExperimentsAgent routing and confirmation isolation, solution catalogue and
+through lake, the eval and corpus agents and lake#763's agent names in the prompt and the
+`delegate` tool, App and build reads with retained events, Application Agent app turns, proposal-only
+App actions, Experiments Agent routing and confirmation isolation, solution catalogue and
 policy/readout behavior, solution and policy proposals that are never sent, unknown capabilities
 as observations, `compare_models` ranking held-out scores, a long list trimmed by its items with
 its exact count and a paged answer's total and cursor, Design → Agents and Train → Agents in the prompt and a
@@ -140,13 +158,16 @@ its trace without the key).
 
 ## Documentation
 
+- [`docs/releases/`](docs/releases/) — one page per release: what it includes, what it does not,
+  known issues and verification.
 - [`docs/agents/`](docs/agents/) — Design → Agents and the Agent Factory for designing an agent,
-  Train → Agents for training one (lake#653), and the agent pages a turn is asked from.
+  Train → Agents for training one (lake#653), the agent pages a turn is asked from, and evals and
+  training corpora handed to the Eval Generator, Auto-Suggest Corpus and Project Corpus Agents.
 - [`docs/reads/`](docs/reads/) — what one read hands the model: a long list trimmed by its items
   with its exact count, paged answers, and the said cut of last resort.
-- [`docs/apps/`](docs/apps/) — App and build reads, event-stream diagnosis, ApplicationAgent
+- [`docs/apps/`](docs/apps/) — App and build reads, event-stream diagnosis, Application Agent
   delegation and proposal-only actions.
-- [`docs/experiments/`](docs/experiments/) — ExperimentsAgent turn routing, proposal/result
+- [`docs/experiments/`](docs/experiments/) — Experiments Agent turn routing, proposal/result
   summaries and the confirmation boundary.
 - [`docs/models/`](docs/models/) — comparing trained models by held-out score
   (`compare_models`), and how a turn out of tool rounds ends as failed with a partial answer.

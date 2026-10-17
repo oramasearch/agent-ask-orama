@@ -3,7 +3,7 @@
 `agent.py` derives lake capabilities from OpenAPI (every workspace engine capability by its own
 name, an older lake's through `workspace_query` / `workspace_act`, less the named ceremonies in
 `EXCLUDED_CAPABILITIES`; [`../../docs/capabilities/`](../../docs/capabilities/)), runs reads, records proposals, follows delegated
-tasks, sends ApplicationAgent work as `app` turns, routes ExperimentsAgent work by experiment kind,
+tasks, sends Application Agent work as `app` turns, routes Experiments Agent work by experiment kind,
 blocks experiment confirmation objects, lists the workspace's connected MCP tools and reads them as data or proposes their changes (`mcp_tool`, lake#652), enforces the current turn's methodology and solution
 registries, tells the model whether a turn's page is Design → Agents or Train → Agents
 (`agent_page_work`, lake#653; [`../../docs/agents/`](../../docs/agents/)), compares trained models by held-out score (`compare_models`), trims a long read by its items with each list's exact count (`fit`, [`../../docs/reads/`](../../docs/reads/)), and ends a turn that ran
@@ -17,6 +17,6 @@ offered. `service.py` exposes the turn API and routes that turn kind there, whil
 Prompt text lives in [`prompts/`](prompts/). Domain behavior is documented in
 [`../../docs/apps/`](../../docs/apps/), [`../../docs/methodologies/`](../../docs/methodologies/) and
 [`../../docs/solutions/`](../../docs/solutions/), and model comparison in
-[`../../docs/models/`](../../docs/models/). ExperimentsAgent routing is documented in
+[`../../docs/models/`](../../docs/models/). Experiments Agent routing is documented in
 [`../../docs/experiments/`](../../docs/experiments/), and connected MCP tools in
 [`../../docs/mcp/`](../../docs/mcp/).
