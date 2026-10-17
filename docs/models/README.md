@@ -30,7 +30,7 @@ The read is recorded in the turn's `reads` as `list_models` (or `workspace_query
 "which model is best" and "how do these runs compare" to `compare_models` first, keeps
 `get_run_report` for detail about one run, and states the inputs of the run and model reads
 (`list_runs` `limit` at most 20; `get_model {"id"}`; `get_run_report {"run_id"}`). Finding a
-*new* best model (a training study) still goes to ExperimentsAgent.
+*new* best model (a training study) still goes to Experiments Agent.
 
 ## A Turn That Runs Out of Rounds
 

@@ -508,7 +508,7 @@ def test_apps_are_listed_from_lake():
         message(tool_calls=[call("lake_read", capability="list_apps")]),
         message(content="You have one App, risk-console, and it is running."))
     answer = run(client, fake, message="What Apps do I have?")
-    assert "prompt v12" in client.seen[0][0]["content"]
+    assert "prompt v13" in client.seen[0][0]["content"]
     assert answer.reads == [{
         "capability": "list_apps",
         "input": {"customer_id": "c-1"},
@@ -565,7 +565,7 @@ def test_app_work_is_an_app_turn_followed_through_lake():
             context={"page": "ship/apps"},
         )]),
         message(content=(
-            "ApplicationAgent proposed the risk console App for your review; it has not been "
+            "The Application Agent proposed the risk console App for your review; it has not been "
             "created yet."
         )))
     answer = run(client, fake, message="Build me a risk console App.")
@@ -592,34 +592,34 @@ def test_experiment_requests_use_the_registered_turn_kinds_and_summarize_results
             "Train a model on accounts.",
             "experiment",
             {"dataset": "accounts"},
-            "ExperimentsAgent proposed minimizing validation loss over learning rate and max "
+            "The Experiments Agent proposed minimizing validation loss over learning rate and max "
             "depth with a 12-trial budget. Review and confirm it in lake; no study has started.",
         ),
         (
             "Tune my churn model.",
             "experiment",
             {"project": "retention"},
-            "ExperimentsAgent proposed a 12-trial tuning study. Review and confirm it in lake; "
+            "The Experiments Agent proposed a 12-trial tuning study. Review and confirm it in lake; "
             "no study has started.",
         ),
         (
             "Find the best model for retention.",
             "experiment",
             {"project": "retention"},
-            "ExperimentsAgent proposed a best-model search with a 12-trial budget. Review and "
+            "The Experiments Agent proposed a best-model search with a 12-trial budget. Review and "
             "confirm it in lake; no study has started.",
         ),
         (
             "How is study-7 progressing?",
             "experiment_status",
             {"study": "study-7"},
-            "ExperimentsAgent reports study-7 has completed 4 of its 12 budgeted trials.",
+            "The Experiments Agent reports study-7 has completed 4 of its 12 budgeted trials.",
         ),
         (
             "Why did run-4 diverge?",
             "experiment_explain",
             {"run": "run-4"},
-            "ExperimentsAgent reports run-4 diverged because its gradient norm became non-finite.",
+            "The Experiments Agent reports run-4 diverged because its gradient norm became non-finite.",
         ),
     ]
     for user_message, turn_kind, context, summary in cases:
@@ -922,7 +922,7 @@ def test_evals_are_generated_from_the_index_and_graded_by_rules():
         if case.kind in {"experiment", "experiment_status", "experiment_explain"}
     ]
     replies = {
-        "experiment": "ExperimentsAgent proposed a study; review and confirm it in lake.",
+        "experiment": "The Experiments Agent proposed a study; review and confirm it in lake.",
         "experiment_status": "Study study-7 has completed four trials within its budget.",
         "experiment_explain": "Run run-4 diverged after its gradient norm became non-finite.",
     }
@@ -1042,7 +1042,7 @@ def test_a_runnable_methodology_can_be_proposed_after_reading_the_registry():
             impact="Recompiles segments as an M-3 Pipeline")]),
         message(content="I proposed the runnable M-3 segmentation Pipeline."))
     answer = run(client, fake, message="Can you segment my customers?")
-    assert "prompt v12" in client.seen[0][0]["content"]
+    assert "prompt v13" in client.seen[0][0]["content"]
     assert answer.proposals == [{
         "capability": "workspace_act",
         "input": {
@@ -1105,7 +1105,7 @@ def test_a_runnable_solution_is_read_from_the_registry_and_proposed():
             impact="Builds the S-1 level 1 Pipeline in retention")]),
         message(content="I proposed the S-1 level 1 Pipeline for your confirmation."))
     answer = run(client, fake, message="Build S-1 level 1 in retention from customers.")
-    assert "prompt v12" in client.seen[0][0]["content"]
+    assert "prompt v13" in client.seen[0][0]["content"]
     detail = client.seen[2][-1]["content"]
     assert "Customer retention" in detail
     assert "minimum_level" in detail
@@ -1272,17 +1272,59 @@ def test_an_unknown_solution_operation_is_reported_as_not_deployed():
     assert "unknown_capability" in client.seen[2][-1]["content"]
 
 
-def test_the_prompt_offers_no_internal_agent() -> None:
-    # lake#451: Eval Generator and the corpus generators are Orama's own tooling, not agents a
-    # person delegates to; lake hides them from Talk to and the prompt must not offer them either.
-    from agent_ask_orama.agent import PROMPT_VERSION
+def test_the_prompt_offers_the_eval_and_corpus_agents() -> None:
+    # agent-ask-orama#28: lake lists all nine library agents as ordinary agents (lake#788,
+    # lake PR #793), so an eval goes to the Eval Generator Agent and a training corpus to the
+    # matching corpus agent, under lake#763's names.
     from pathlib import Path
 
     import agent_ask_orama
 
-    prompt = (Path(agent_ask_orama.__file__).parent / "prompts" / f"{PROMPT_VERSION}.md").read_text()
-    for internal in ("agent-eval-generator", "agent-autosuggest-corpus", "agent-project-corpus"):
-        assert internal not in prompt
+    prompt = (Path(agent_ask_orama.__file__).parent / "prompts"
+              / f"{agent.PROMPT_VERSION}.md").read_text()
+    delegate = next(t for t in agent.TOOLS if t["function"]["name"] == "delegate")
+    for key, name in (("agent-eval-generator", "Eval Generator Agent"),
+                      ("agent-autosuggest-corpus", "Auto-Suggest Corpus Agent"),
+                      ("agent-project-corpus", "Project Corpus Agent")):
+        assert f"`{key}` ({name})" in prompt
+        assert key in delegate["function"]["description"]
+        assert name in delegate["function"]["description"]
+    assert "**eval**" in prompt and "**training corpus**" in prompt
+
+
+def test_eval_and_corpus_requests_are_graded_as_delegations() -> None:
+    # agent-ask-orama#28: the eval set asks for an eval and for training corpora, and grades that
+    # each reached its agent.
+    from agent_ask_orama import evals
+    index = agent.capability_index(OPENAPI)
+    cases = [c for c in evals.generate(index, changes=0, reads=0, clarify=0)
+             if c.kind == "delegate"]
+    nothing = {"reply": "", "reads": [], "proposals": [], "delegations": [], "incomplete": False}
+    for key in ("agent-eval-generator", "agent-autosuggest-corpus", "agent-project-corpus"):
+        case = next(c for c in cases if c.expect == key)
+        reached = {**nothing, "delegations": [{"agent": key, "kind": None}]}
+        assert evals.grade(case, reached, index, []).passed
+        elsewhere = {**nothing, "delegations": [{"agent": "agent-project", "kind": None}]}
+        assert not evals.grade(case, elsewhere, index, []).passed
+
+
+def test_the_prompt_uses_the_agent_names_of_lake_763() -> None:
+    from pathlib import Path
+
+    import agent_ask_orama
+
+    prompt = (Path(agent_ask_orama.__file__).parent / "prompts"
+              / f"{agent.PROMPT_VERSION}.md").read_text()
+    for name in ("Project Agent", "Application Agent", "Experiments Agent", "Auto-Suggest Agent",
+                 "Agent Creator Agent", "Eval Generator Agent", "Auto-Suggest Corpus Agent",
+                 "Project Corpus Agent"):
+        assert name in prompt
+    for old in ("ApplicationAgent", "ExperimentsAgent", "AgentCreator", "Corpus Generator",
+                "(Auto-Suggest)", "(Eval Generator)"):
+        assert old not in prompt
+    delegate = next(t for t in agent.TOOLS if t["function"]["name"] == "delegate")
+    for old in ("ApplicationAgent", "ExperimentsAgent"):
+        assert old not in delegate["function"]["description"]
 
 
 class ConnectedLake(FakeLake):
@@ -1700,7 +1742,7 @@ def test_the_prompt_names_design_agents_and_train_agents():
     import agent_ask_orama
     prompt = (Path(agent_ask_orama.__file__).parent / "prompts"
               / f"{agent.PROMPT_VERSION}.md").read_text()
-    assert agent.PROMPT_VERSION == "v12"
+    assert agent.PROMPT_VERSION == "v13"
     assert "Design (projects,\nPipelines, solutions, agents)" in prompt
     assert "Train (agents to train, runs, experiments, models)" in prompt
     assert "Train (agents, data, runs)" not in prompt
