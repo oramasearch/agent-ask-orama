@@ -5,6 +5,8 @@
 **Agent Library**. lake shows it as a panel on every page ([lake#236](https://github.com/oramasearch/lake/issues/236))
 and calls this service for every message.
 
+**Current release: [v0.1.0](docs/releases/v0.1.0.md)** (2026-10-17, prompt v13).
+
 ## What it does
 
 - **Works as the person, never more.** Each turn carries the key lake delegates from the person's
@@ -79,7 +81,7 @@ and calls this service for every message.
 
 | Route | What it does |
 |---|---|
-| `GET /healthz` | the model and prompt version |
+| `GET /healthz` | the agent, its release `version`, the model and prompt version |
 | `POST /v1/turn` | `{conversation_id, message, lake_token, customer_id, page, lake_url?}` → `{ok, conversation_id, trace_id, reply, reads, proposals, delegations, rounds, incomplete}`; a turn out of tool rounds is `ok: false` (HTTP 422) with its partial answer as `error` |
 
 `AGENT_SERVICE_TOKEN`, when set, is required as a bearer (only lake calls it). `LAKE_URL` is lake's
@@ -156,6 +158,8 @@ its trace without the key).
 
 ## Documentation
 
+- [`docs/releases/`](docs/releases/) — one page per release: what it includes, what it does not,
+  known issues and verification.
 - [`docs/agents/`](docs/agents/) — Design → Agents and the Agent Factory for designing an agent,
   Train → Agents for training one (lake#653), the agent pages a turn is asked from, and evals and
   training corpora handed to the Eval Generator, Auto-Suggest Corpus and Project Corpus Agents.

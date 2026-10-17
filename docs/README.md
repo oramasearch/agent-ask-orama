@@ -1,5 +1,8 @@
 # Documentation
 
+- [`releases/`](releases/) — one page per release, newest first; the version is
+  `pyproject.toml`'s and `tests/test_release.py` holds the page to it.
+
 - [`agents/`](agents/) — Design → Agents designs an agent (and the Agent Factory), Train → Agents
   trains one that learns (lake#653); the agent pages a turn is asked from, and their evals; evals
   and training corpora handed to the Eval Generator, Auto-Suggest Corpus and Project Corpus Agents
