@@ -36,6 +36,9 @@ Graded deterministically, never by a judge:
   **improve an agent** request to Train → Agents (lake#653, agent-ask-orama#19);
 - a turn asked from `/design/agents` or `/design/agent` must speak of designing the agent, and one
   from `/train/agent` of training it, never of the other alone (agent-ask-orama#19);
+- a **how-to** question about Lake itself (the home's "How do I load my first dataset?") must read
+  the Docs (`list_docs` or `get_doc`), name the page path as the navigation shows it and link it,
+  and name no file format the upload refuses, nor a "Lake Console" page (lake#817);
 - no turn may run out of tool rounds (`incomplete`).
 - every proposal and read must name a capability that exists (no invented names).
 
@@ -140,6 +143,17 @@ AGENT_PAGE_QUESTIONS = [
      "What should I do next with this agent?"),
 ]
 
+# How-to questions about Lake itself (lake#817): (case id, the question, the page path the answer
+# must name, as the navigation shows it, and the link it must give). The first is the home's own
+# first suggestion. The answer comes from the Docs.
+HOW_TO_QUESTIONS = [
+    ("howto-load-dataset", "How do I load my first dataset?",
+     "data → datasets → load data", "/train/data"),
+]
+# File formats Load data refuses (it takes CSV and JSONL): naming one sends a person to a dead end.
+REFUSED_FORMATS = ("parquet", "excel", "xlsx", "xls", "avro", "orc", "feather", "tsv")
+DOCS_READS = frozenset({"list_docs", "get_doc"})
+
 # The reads that answer "which experiments, search indexes and agents": each set is one entity,
 # by lake's name or the engine's.
 WORKSPACE_ENTITY_READS = (
@@ -153,11 +167,12 @@ WORKSPACE_ENTITY_READS = (
 class Case:
     id: str
     # change | read | clarify | delegate | experiment* | app_* | methodology | solution
-    # | model_scores | workspace_entities | count
+    # | model_scores | workspace_entities | count | agent_place | agent_page | how_to
     kind: str
     message: str
     expect: str     # the capability, the agent key, or `design` / `train` for agent work
     page: dict[str, Any] = field(default_factory=dict)  # the page the turn is asked from
+    link: str = ""  # how_to: the page link the answer must give
 
 
 @dataclass
@@ -221,6 +236,9 @@ def generate(index: dict[str, Capability], changes: int = 8, reads: int = 6,
         cases.append(Case(case_id, "agent_place", message, work))
     for case_id, work, page, message in AGENT_PAGE_QUESTIONS:
         cases.append(Case(case_id, "agent_page", message, work, page))
+    for case_id, message, place, link in HOW_TO_QUESTIONS:
+        # Asked from the home, where the question is offered.
+        cases.append(Case(case_id, "how_to", message, place, {"path": "/"}, link))
     return cases
 
 
@@ -306,6 +324,8 @@ def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
             reasons.append(f"did not speak of {own}ing the agent on {case.page['path']}")
         elif mentions[other] > mentions[own]:
             reasons.append(f"spoke of {other}ing more than {own}ing on {case.page['path']}")
+    elif case.kind == "how_to":
+        grade_how_to(case, answer, reasons)
     elif case.kind == "app_list":
         require_reads(answer, ["list_apps"], reasons)
     elif case.kind == "app_health":
@@ -357,6 +377,23 @@ def grade(case: Case, answer: dict[str, Any], index: dict[str, Capability],
         else:
             grade_solution_answer(case, answer["reply"], solutions, reasons)
     return Graded(case, not reasons, reasons, answer)
+
+
+def grade_how_to(case: Case, answer: dict[str, Any], reasons: list[str]) -> None:
+    """A how-to answer comes from the Docs, names the page path as the navigation shows it, links
+    it, and names no format the upload refuses (lake#817)."""
+    if not read_anything(answer) & DOCS_READS:
+        reasons.append("did not read the Docs (list_docs or get_doc)")
+    said = arrows(answer["reply"])
+    if case.expect not in said:
+        reasons.append(f"did not name the path {case.expect}")
+    if case.link and f"]({case.link}" not in answer["reply"]:
+        reasons.append(f"did not link {case.link}")
+    named = sorted(f for f in REFUSED_FORMATS if re.search(rf"\b{f}\b", said))
+    if named:
+        reasons.append(f"named formats Lake refuses: {named}")
+    if "lake console →" in said:
+        reasons.append("named a Lake Console page, which Lake does not have")
 
 
 def places_named(reply: str) -> set[str]:

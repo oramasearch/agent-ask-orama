@@ -36,6 +36,10 @@ and calls this service for every message.
   `launch_agent`. A library agent answers on lake's agent bus: `agent_turn` returns a task, and Ask
   Orama follows it with `receive_agent_events` for up to four minutes (lake#269). A subagent still
   working then is reported as working, with its task.
+- **How-to answers come from Lake's Docs.** A question about using Lake is answered from the
+  guide `list_docs` and `get_doc` find, naming each page as the navigation shows it, linked, and
+  only the formats it states (prompt v14, [lake#817](https://github.com/oramasearch/lake/issues/817),
+  [`docs/how-to/`](docs/how-to/README.md)).
 - **Its vocabulary is derived.** The capabilities it may name come from lake's `/v1/openapi.json`
   at every turn, less the ceremonies a person performs (signing in, recovering, minting
   credentials, reading secrets in the clear), named one by one in `EXCLUDED_CAPABILITIES`

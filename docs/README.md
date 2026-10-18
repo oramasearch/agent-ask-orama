@@ -22,4 +22,6 @@
   methodology support, and how it drafts a workspace methodology's files (lake#688).
 - [`solutions/`](solutions/) — live solution discovery, preview and sketch handling, policy and
   evidence reads, proposal enforcement and older-engine behavior.
+- [`how-to/`](how-to/) — questions about using Lake answered from Lake's Docs: the exact page
+  path, linked, and only the formats a guide states (prompt v14, lake#817).
 - [`mcp/`](mcp/) — the workspace's connected MCP tools, read as data, changes proposed (lake#652).

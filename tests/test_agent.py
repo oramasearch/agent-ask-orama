@@ -508,7 +508,7 @@ def test_apps_are_listed_from_lake():
         message(tool_calls=[call("lake_read", capability="list_apps")]),
         message(content="You have one App, risk-console, and it is running."))
     answer = run(client, fake, message="What Apps do I have?")
-    assert "prompt v13" in client.seen[0][0]["content"]
+    assert "prompt v14" in client.seen[0][0]["content"]
     assert answer.reads == [{
         "capability": "list_apps",
         "input": {"customer_id": "c-1"},
@@ -865,6 +865,7 @@ def test_evals_are_generated_from_the_index_and_graded_by_rules():
         "count",
         "agent_place",
         "agent_page",
+        "how_to",
     }
     assert all(not index[c.expect].required for c in cases if c.kind in {"change", "read"}), \
         "a change or read case can be done as asked"
@@ -1042,7 +1043,7 @@ def test_a_runnable_methodology_can_be_proposed_after_reading_the_registry():
             impact="Recompiles segments as an M-3 Pipeline")]),
         message(content="I proposed the runnable M-3 segmentation Pipeline."))
     answer = run(client, fake, message="Can you segment my customers?")
-    assert "prompt v13" in client.seen[0][0]["content"]
+    assert "prompt v14" in client.seen[0][0]["content"]
     assert answer.proposals == [{
         "capability": "workspace_act",
         "input": {
@@ -1105,7 +1106,7 @@ def test_a_runnable_solution_is_read_from_the_registry_and_proposed():
             impact="Builds the S-1 level 1 Pipeline in retention")]),
         message(content="I proposed the S-1 level 1 Pipeline for your confirmation."))
     answer = run(client, fake, message="Build S-1 level 1 in retention from customers.")
-    assert "prompt v13" in client.seen[0][0]["content"]
+    assert "prompt v14" in client.seen[0][0]["content"]
     detail = client.seen[2][-1]["content"]
     assert "Customer retention" in detail
     assert "minimum_level" in detail
@@ -1742,7 +1743,7 @@ def test_the_prompt_names_design_agents_and_train_agents():
     import agent_ask_orama
     prompt = (Path(agent_ask_orama.__file__).parent / "prompts"
               / f"{agent.PROMPT_VERSION}.md").read_text()
-    assert agent.PROMPT_VERSION == "v13"
+    assert agent.PROMPT_VERSION == "v14"
     assert "Design (projects,\nPipelines, solutions, agents)" in prompt
     assert "Train (agents to train, runs, experiments, models)" in prompt
     assert "Train (agents, data, runs)" not in prompt
@@ -1824,3 +1825,53 @@ def test_the_agent_page_evals_run_from_the_page_and_speak_of_its_work():
     graded = evals.run_case(cases["page-train-agent"], base, index, mixed, "gpt-5.5",
                             inner=httpx.MockTransport(FakeLake()))
     assert graded.reasons == ["spoke of designing more than training on /train/agent"]
+
+
+def test_the_prompt_answers_how_to_questions_from_the_docs():
+    # lake#817: "How do I load my first dataset?" was answered with a "Lake Console → datasets"
+    # page, an "Upload dataset" button and Parquet. The prompt sends how-to questions to the Docs.
+    from pathlib import Path
+
+    import agent_ask_orama
+    prompt = (Path(agent_ask_orama.__file__).parent / "prompts"
+              / f"{agent.PROMPT_VERSION}.md").read_text()
+    assert "## Questions about using Lake: answer from the Docs" in prompt
+    for rule in ("`list_docs`", "`get_doc`", "**Data → Datasets → Load data → Upload**",
+                 "[Data → Datasets → Load data](/train/data)", "(/docs/<slug>)",
+                 "never add one"):
+        assert rule in prompt, rule
+    assert "in Lake Console" not in prompt, "Lake Console is the product, not a place"
+
+
+def test_the_how_to_eval_holds_the_answer_to_the_homes_first_suggestion():
+    from agent_ask_orama import evals
+    # Lake's Docs reads, public and in every turn key, as lake's OpenAPI lists them.
+    docs = {"/v1/list_docs": {"get": {"summary": "List Docs pages", "parameters": []}},
+            "/v1/get_doc": {"get": {"summary": "Read a Docs page", "parameters": []}}}
+    index = agent.capability_index({"paths": {**OPENAPI["paths"], **docs}})
+    case = {c.id: c for c in evals.generate(index)}["howto-load-dataset"]
+    assert case.kind == "how_to" and case.message == "How do I load my first dataset?"
+    assert case.page == {"path": "/"} and case.link == "/train/data"
+
+    def said(reply, reads=("get_doc",)):
+        return {"reply": reply, "reads": [{"capability": r, "input": {}} for r in reads],
+                "proposals": [], "delegations": []}
+
+    # The answer lake-dev gave on 2026-10-18, recorded in lake#817.
+    recorded = ("1. Go to **Lake Console → datasets / data upload** in your workspace.\n"
+                "2. Choose **Upload dataset**.\n3. Pick a file, usually CSV or Parquet.")
+    graded = evals.grade(case, said(recorded, ()), index, [])
+    assert not graded.passed
+    assert "did not read the Docs (list_docs or get_doc)" in graded.reasons
+    assert "did not name the path data → datasets → load data" in graded.reasons
+    assert "did not link /train/data" in graded.reasons
+    assert "named formats Lake refuses: ['parquet']" in graded.reasons
+    assert "named a Lake Console page, which Lake does not have" in graded.reasons
+
+    good = ("Open [Data → Datasets → Load data](/train/data), keep **Upload** and choose a CSV or "
+            "JSONL file (up to 16 MiB). You can also **Generate** one, pull one **From a "
+            "connection**, or use **Load as dataset** on a file in Data → Drives. "
+            "[Datasets and Loading Data](/docs/load-data)")
+    assert evals.grade(case, said(good), index, []).passed
+    assert evals.grade(case, said(good, ("list_docs",)), index, []).passed
+    assert not evals.grade(case, said(good + " Excel works too."), index, []).passed
