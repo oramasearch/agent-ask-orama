@@ -1875,3 +1875,6 @@ def test_the_how_to_eval_holds_the_answer_to_the_homes_first_suggestion():
     assert evals.grade(case, said(good), index, []).passed
     assert evals.grade(case, said(good, ("list_docs",)), index, []).passed
     assert not evals.grade(case, said(good + " Excel works too."), index, []).passed
+    # Turning a person away from a refused format, as the guide does, is not offering it.
+    steered = good + " Parquet and Excel are not accepted: save the file as CSV first."
+    assert evals.grade(case, said(steered), index, []).passed

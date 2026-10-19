@@ -41,7 +41,9 @@ guide to the rail and to the formats `upload_dataset` accepts.
 `evals.py` generates a `how_to` case for each of `HOW_TO_QUESTIONS`, asked from the home
 (`page.path` `/`). It passes when the turn read `list_docs` or `get_doc`, the reply names the path
 (`data → datasets → load data`, any arrow) and links `/train/data`, and it names none of
-`REFUSED_FORMATS` (Parquet, Excel, Avro, …) and no "Lake Console" page.
+`REFUSED_FORMATS` (Parquet, Excel, Avro, …) as one to load and no "Lake Console" page. A sentence
+that names a refused format only to turn the person away from it ("Parquet is not accepted: save it
+as CSV first", as the guide itself says) is not counted.
 `test_the_how_to_eval_holds_the_answer_to_the_homes_first_suggestion` grades the recorded lake-dev
 answer as failing on each of those and a Docs-based answer as passing. The live runner has not yet
 run this case.

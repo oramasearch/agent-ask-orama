@@ -152,6 +152,9 @@ HOW_TO_QUESTIONS = [
 ]
 # File formats Load data refuses (it takes CSV and JSONL): naming one sends a person to a dead end.
 REFUSED_FORMATS = ("parquet", "excel", "xlsx", "xls", "avro", "orc", "feather", "tsv")
+# A sentence that names a refused format only to turn the person away from it, as the Datasets
+# guide does ("save another kind of file as CSV first"), does not offer that format.
+REFUSAL_WORDS = re.compile(r"\b(?:not|no|never|only|convert|save|export)\b|n't")
 DOCS_READS = frozenset({"list_docs", "get_doc"})
 
 # The reads that answer "which experiments, search indexes and agents": each set is one entity,
@@ -389,7 +392,10 @@ def grade_how_to(case: Case, answer: dict[str, Any], reasons: list[str]) -> None
         reasons.append(f"did not name the path {case.expect}")
     if case.link and f"]({case.link}" not in answer["reply"]:
         reasons.append(f"did not link {case.link}")
-    named = sorted(f for f in REFUSED_FORMATS if re.search(rf"\b{f}\b", said))
+    offered = [sentence for sentence in re.split(r"(?<=[.!?;])\s+|\n", said)
+               if not REFUSAL_WORDS.search(sentence)]
+    named = sorted(f for f in REFUSED_FORMATS
+                   if any(re.search(rf"\b{f}\b", sentence) for sentence in offered))
     if named:
         reasons.append(f"named formats Lake refuses: {named}")
     if "lake console →" in said:
