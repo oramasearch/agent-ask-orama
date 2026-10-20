@@ -6,6 +6,10 @@ Each prompt behavior change creates a new version; previous versions remain for 
 - `methodology_draft_v1.md` is the `methodology_draft` turn's own prompt (lake#688,
   `methodology_draft.py`, `DRAFT_PROMPT_VERSION`): the manifest, the fit/predict/score interface
   and the Data object, standard library preferred, pins without hashes (the agent looks them up).
+- `v14.md` answers questions about using Lake from Lake's Docs (`list_docs`, then `get_doc`):
+  pages, tabs and buttons named exactly as the guide and the navigation show them and linked, and
+  only the formats and limits the guide states; "Lake Console" is the product, not a page
+  (lake#817, `docs/how-to/`).
 - `v13.md` hands an eval to `agent-eval-generator` (Eval Generator Agent) and a training corpus to
   `agent-autosuggest-corpus` (Auto-Suggest Corpus Agent) or `agent-project-corpus` (Project Corpus
   Agent), asking which agent the corpus trains when the person does not say, and uses lake#763's
