@@ -49,6 +49,11 @@ unfinished turn as `failed` with its partial answer.
 that `docs/releases/v<version>.md` exists, names it in its heading and is listed in
 `docs/releases/README.md`, and that `/healthz` reports it.
 
+`test_service_auth.py` (agent-ask-orama#37) starts `serve()`'s own handler on a free port: the
+right bearer runs the turn; a missing, empty, truncated, extended or scheme-less bearer is `401`
+without running it; an unset `AGENT_SERVICE_TOKEN` refuses every turn with `503`; the comparison
+goes through `hmac.compare_digest`; and a non-ASCII bearer is refused, not an error.
+
 Run all tests with `uv run pytest`.
 
 `test_methodology_draft.py` covers the `methodology_draft` turn (lake#688) with a scripted model
