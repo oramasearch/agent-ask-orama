@@ -107,9 +107,29 @@ in-cluster address; `ASK_ORAMA_MODEL` the model (default `gpt-5.5`). **The model
 lake** (lake#248, lake `docs/api/model-gateway.md`): every call goes to `<LAKE_URL>/openai/v1` with the
 turn's own `lake_token` as the API key (`model.py`), so lake counts its tokens in the turn's workspace
 and enforces the account's model-token limit. The service needs no `OPENAI_API_KEY`; only the offline
-evals (`evals.py`), which run for no workspace, call OpenAI directly. Conversations live in
-memory (below). Every turn is a trace in
-`TRACE_DIR`, never with the person's key.
+evals (`evals.py`), which run for no workspace, call OpenAI directly. Conversations live in memory, under the
+Lake task that last continued them (below).
+
+**Nothing the service keeps grows without limit** (agent-ask-orama#44, LSR-076). One pod serves
+every tenant on a lake, so its conversation memory (`conversations.py`) is bounded:
+
+| Limit | Setting | Default |
+|---|---|---|
+| Conversations kept; past it the least recently used goes | `ASK_ORAMA_CONVERSATIONS` | 256 |
+| Turns kept per conversation; the oldest whole turns go | `ASK_ORAMA_CONVERSATION_TURNS` | 20 |
+| Bytes per conversation (JSON of its messages); the oldest whole turns go | `ASK_ORAMA_CONVERSATION_BYTES` | 1 MiB |
+| Bytes of every conversation together; the least recently used go | `ASK_ORAMA_CONVERSATIONS_BYTES` | 64 MiB |
+| Idle time after which a conversation is dropped | `ASK_ORAMA_CONVERSATION_IDLE_SECONDS` | 3600 |
+
+The system message stays while any of a conversation does, and a turn is dropped whole, so a tool
+call never loses its answer. A turn that fails (the model unreachable, a read raising) leaves the
+conversation as it found it. A dropped conversation continues as a new one.
+
+**A turn writes nothing to the pod's disk.** It used to write a trace file per turn to `TRACE_DIR`,
+which grew without limit on a temporary volume every tenant shares. Lake keeps the turn's message
+and answer in the task's record in its workspace (lake `docs/api/agent-bus.md`). The service logs
+one line per turn instead: its `trace_id` (still in the answer), kind, prompt version, conversation
+id and how it ended, never what was said. `TRACE_DIR` is ignored.
 
 **A turn's credential goes only to Lake at this service's own `LAKE_URL`** (#39). Every Lake read
 and every model call of a turn uses `LAKE_URL`; a `lake_url` in the turn is ignored, so a caller
@@ -192,10 +212,11 @@ policy/readout behavior, solution and policy proposals that are never sent, unkn
 as observations, `compare_models` ranking held-out scores, a long list trimmed by its items with
 its exact count and a paged answer's total and cursor, Design → Agents and Train → Agents in the prompt and a
 turn's agent page, the agent-place and agent-page evals run offline, a turn out of tool rounds ending
-unfinished (and published as `failed`), the service's conversation and a trace without the key,
-the eval grader, and the `methodology_draft` turn (three files, lock hashes from the index, the
-manifest and entrypoint checks, one repair round, a failing draft answered with its findings, and
-its trace without the key).
+unfinished (and published as `failed`), the service's conversation with no file written, the
+bounded conversation memory and a failed turn that keeps nothing, the bus taking tasks, the eval
+grader, and the `methodology_draft` turn (three files, lock hashes from the index, the manifest
+and entrypoint checks, one repair round, a failing draft answered with its findings, and no file
+written).
 
 ## Documentation
 

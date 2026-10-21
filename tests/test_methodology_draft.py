@@ -150,8 +150,8 @@ def test_wheel_hashes_come_from_the_index_and_a_missing_pin_is_named():
         raise AssertionError("a missing version is a LookupError")
 
 
-def test_the_service_answers_a_methodology_draft_turn_and_traces_it_without_the_key(
-        tmp_path, monkeypatch):
+def test_the_service_answers_a_methodology_draft_turn_and_keeps_nothing_on_disk(
+        tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(md, "pypi_wheel_hashes", lookup)
     state = service.State()
     state.trace_dir = tmp_path
@@ -162,6 +162,9 @@ def test_the_service_answers_a_methodology_draft_turn_and_traces_it_without_the_
                                "context": {"name": "Late payers"}}, state, client)
     assert result["ok"], result
     assert result["result"]["name"] == "Late payers"
-    trace = (tmp_path / f"{result['trace_id']}.json").read_text()
-    assert "lat.task.secret" not in trace
-    assert json.loads(trace)["kind"] == "methodology_draft"
+    assert list(tmp_path.iterdir()) == [], "no trace file on the pod's disk (#44)"
+    logged = [json.loads(line) for line in capsys.readouterr().out.splitlines()
+              if result["trace_id"] in line]
+    assert logged and logged[0]["kind"] == "methodology_draft"
+    assert "lat.task.secret" not in json.dumps(logged)
+    assert "late payers" not in json.dumps(logged), "what was asked stays off the log"

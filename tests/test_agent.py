@@ -843,8 +843,7 @@ def test_a_service_turn_needs_the_persons_key_and_keeps_the_conversation(tmp_pat
     assert first["ok"] and second["ok"]
     assert len(state.conversations[("c-1", "w-1", "t2")]) == 5, \
         "system, two people's turns, two replies"
-    trace = (tmp_path / f"{second['trace_id']}.json").read_text()
-    assert "person-key" not in trace
+    assert second["trace_id"] and list(tmp_path.iterdir()) == [], "no trace file (#44)"
 
 
 def test_evals_are_generated_from_the_index_and_graded_by_rules():

@@ -3,7 +3,8 @@
 lake calls it for every message in the Ask Orama panel, passing the person's delegated key for the
 turn (`lake_token`), the account, and the page they are on. The same key reaches the model through
 lake's model gateway (`model.py`). Conversations are kept in memory under the Lake task that last
-continued them (`State.history`), never by the conversation id a turn names.
+continued them (`State.history`), never by the conversation id a turn names, within the limits of
+`conversations.Conversations` (agent-ask-orama#44). A turn writes nothing to the pod's disk.
 Standard library only.
 """
 
@@ -17,7 +18,6 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -25,6 +25,7 @@ from openai import OpenAI
 
 from agent_ask_orama import lake_bus
 from agent_ask_orama.agent import PROMPT_VERSION, Turn, answer_turn, proposal_states
+from agent_ask_orama.conversations import Conversations
 from agent_ask_orama.methodology_draft import methodology_draft_turn
 from agent_ask_orama.model import gateway_client
 
@@ -34,10 +35,11 @@ class State:
         self.model = os.environ.get("ASK_ORAMA_MODEL", "gpt-5.5")
         self.token = os.environ.get("AGENT_SERVICE_TOKEN", "")
         self.lake_url = os.environ.get("LAKE_URL", "")
-        self.trace_dir = Path(os.environ.get("TRACE_DIR", "/tmp/agent-ask-orama-traces"))
         self.lock = threading.Lock()
-        # (customer_id, workspace_id, task_id) -> the conversation that task last continued.
-        self.conversations: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+        # (customer_id, workspace_id, task_id) -> the conversation that task last continued,
+        # bounded by count, turns, bytes and idle time: one shared pod serves every tenant
+        # (agent-ask-orama#44).
+        self.conversations = Conversations.from_env()
 
     def history(self, claim: object, prior_task_id: str) -> list[dict[str, Any]]:
         """The conversation a turn continues, now kept under the turn's own task.
@@ -109,6 +111,19 @@ def lake_address(configured: str) -> str | None:
     return url
 
 
+def trace(conversation: str, kind: str, **facts: Any) -> str:
+    """A turn's trace id, logged on one line with what the turn was and how it ended, never what
+    was said (agent-ask-orama#44). The turn's message and answer are kept by lake in the task's
+    record in its workspace, not on this pod: a file per turn here grew without limit on a disk
+    every tenant shares."""
+    trace_id = str(uuid.uuid4())
+    print(json.dumps({"agent": "agent-ask-orama", "trace_id": trace_id, "kind": kind,
+                      "prompt_version": PROMPT_VERSION, "conversation_id": conversation,
+                      "at": datetime.now(timezone.utc).isoformat(), **facts}, default=str),
+          flush=True)
+    return trace_id
+
+
 def run_turn(body: dict[str, Any], state: State, client: OpenAI | None = None,
              lake=None, claim: object = None) -> dict[str, Any]:
     """One turn. `claim` is what Lake's claim reply said of the task (bus turns only); without
@@ -136,13 +151,7 @@ def run_turn(body: dict[str, Any], state: State, client: OpenAI | None = None,
     model = client or gateway_client(lake_url, token)
     answer = answer_turn(turn, state.history(claim, prior_task_id(body)), model, state.model,
                          lake)
-    trace_id = str(uuid.uuid4())
-    state.trace_dir.mkdir(parents=True, exist_ok=True)
-    (state.trace_dir / f"{trace_id}.json").write_text(json.dumps(
-        {"trace_id": trace_id, "agent": "agent-ask-orama", "prompt_version": PROMPT_VERSION,
-         "at": datetime.now(timezone.utc).isoformat(), "conversation_id": conversation,
-         "message": message, "page": turn.page, "answer": answer.as_dict()}, indent=1,
-        default=str))
+    trace_id = trace(conversation, "api", rounds=answer.rounds, incomplete=answer.incomplete)
     if answer.incomplete:
         # Out of tool rounds (agent-ask-orama#14): a partial answer is not a success. On lake's
         # bus this publishes `failed` with the partial answer as its message.
@@ -157,13 +166,8 @@ def run_methodology_draft(body: dict[str, Any], state: State, conversation: str,
     methodology, checked, for the person to review. Nothing is written."""
     model = client or gateway_client(lake_url, token)
     answer = methodology_draft_turn(body, model, state.model)
-    trace_id = str(uuid.uuid4())
-    state.trace_dir.mkdir(parents=True, exist_ok=True)
-    (state.trace_dir / f"{trace_id}.json").write_text(json.dumps(
-        {"trace_id": trace_id, "agent": "agent-ask-orama", "kind": "methodology_draft",
-         "at": datetime.now(timezone.utc).isoformat(), "conversation_id": conversation,
-         "message": body.get("message") or "", "context": body.get("context") or {},
-         "answer": answer}, indent=1, default=str))
+    trace_id = trace(conversation, "methodology_draft", rounds=answer.get("rounds"),
+                     ok=bool(answer.get("ok")))
     return {**answer, "conversation_id": conversation, "trace_id": trace_id}
 
 
