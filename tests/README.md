@@ -77,11 +77,6 @@ right bearer runs the turn; a missing, empty, truncated, extended or scheme-less
 without running it; an unset `AGENT_SERVICE_TOKEN` refuses every turn with `503`; the comparison
 goes through `hmac.compare_digest`; and a non-ASCII bearer is refused, not an error.
 
-`test_turn_destinations.py` (agent-ask-orama#39) checks that a turn's credential goes only to Lake
-at the service's own `LAKE_URL`: a turn's `lake_url` (another host, scheme or port) is ignored and
-every Lake read and the model client use `LAKE_URL`; with `LAKE_URL` unset, blank or not an absolute
-http(s) URL without user info, a turn and a methodology draft are refused before any request.
-
 Run all tests with `uv run pytest`.
 
 `test_methodology_draft.py` covers the `methodology_draft` turn (lake#688) with a scripted model
@@ -90,3 +85,8 @@ agent and an empty lock for the standard library; every wheel's hash from the in
 package (`pypi_wheel_hashes` against an `httpx` MockTransport, a missing version named); the
 manifest checks as Lake reads them; one repair round with the failing findings, then `ok: false`
 with them; and the service routing the turn kind and tracing it without the key.
+
+`test_turn_destinations.py` (agent-ask-orama#39) checks that a turn's credential goes only to Lake
+at the service's own `LAKE_URL`: a turn's `lake_url` (another host, scheme or port) is ignored and
+every Lake read and the model client use `LAKE_URL`; with `LAKE_URL` unset, blank or not an absolute
+http(s) URL without user info, a turn and a methodology draft are refused before any request.
