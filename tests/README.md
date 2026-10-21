@@ -45,6 +45,14 @@ names (ApplicationAgent, ExperimentsAgent, Corpus Generator).
 `test_lake_bus.py` covers task receipt and result publication on lake's agent bus, and publishes an
 unfinished turn as `failed` with its partial answer.
 
+`test_bus_backpressure.py` (agent-ask-orama#43, LSR-075) blocks every worker against a fake lake
+whose receive answers only unclaimed tasks, and offers more tasks than there are workers: no more
+tasks are claimed than there are workers, the rest stay unclaimed and another replica can take one
+(this replica then never runs it), a second tenant gets a worker beside the first tenant's burst,
+one tenant alone leaves a worker free, nothing is received while every worker is busy, a turn that
+raises gives its worker back, and the worker counts come from `AGENT_BUS_WORKERS` and
+`AGENT_BUS_TENANT_WORKERS`.
+
 `test_release.py` reads the version from `pyproject.toml` (and the installed package) and checks
 that `docs/releases/v<version>.md` exists, names it in its heading and is listed in
 `docs/releases/README.md`, and that `/healthz` reports it.

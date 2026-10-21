@@ -103,6 +103,16 @@ claims each task, whose body carries the task's credential as `lake_token`, runs
 `/v1/turn` would, and publishes `progress`, then the answer or `failed`. It starts when the
 operator sets `LAKE_URL`, `AGENT_BUS_TOKEN` and `AGENT_BUS_AGENT`.
 
+**A task is claimed only when a worker is free to run it** (agent-ask-orama#43, LSR-075). The
+service runs `AGENT_BUS_WORKERS` turns at once (default 4). While every worker is busy it receives
+nothing more, and a task it cannot run yet stays unclaimed on the bus, where another replica may
+take it; no claimed body or task credential waits in the process. One customer holds at most
+`AGENT_BUS_TENANT_WORKERS` workers (default one fewer than the workers, at least 1), and a freed
+worker goes to the waiting customer holding the fewest, so one tenant's burst cannot take every
+worker from the others. Received task ids waiting for a worker (the dispatch row only: id,
+customer, kind) are capped at 256; any beyond stay on the bus, where lake's recovery loop
+republishes unclaimed tasks.
+
 ## Evals
 
 `ask-orama-evals` (`evals.py`) generates cases from the live lake's capability index (a sample of
