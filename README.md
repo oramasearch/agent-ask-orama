@@ -93,15 +93,23 @@ in-cluster address; `ASK_ORAMA_MODEL` the model (default `gpt-5.5`). **The model
 lake** (lake#248, lake `docs/api/model-gateway.md`): every call goes to `<lake_url>/openai/v1` with the
 turn's own `lake_token` as the API key (`model.py`), so lake counts its tokens in the turn's workspace
 and enforces the account's model-token limit. The service needs no `OPENAI_API_KEY`; only the offline
-evals (`evals.py`), which run for no workspace, call OpenAI directly. Conversations live in memory by
-id. Every turn is a trace in
+evals (`evals.py`), which run for no workspace, call OpenAI directly. Conversations live in
+memory (below). Every turn is a trace in
 `TRACE_DIR`, never with the person's key.
 
 **Turns arrive on lake's agent bus** (lake `docs/api/agent-bus.md`). `lake_bus.py` long-polls
 `receive_agent_tasks` through lake with this agent's own bus credential (`AGENT_BUS_TOKEN`). It
 claims each task, whose body carries the task's credential as `lake_token`, runs it as
-`/v1/turn` would, and publishes `progress`, then the answer or `failed`. It starts when the
-operator sets `LAKE_URL`, `AGENT_BUS_TOKEN` and `AGENT_BUS_AGENT`.
+`/v1/turn` would (with the claim reply's task, account and workspace as `claim`), and publishes
+`progress`, then the answer or `failed`. It starts when the operator sets `LAKE_URL`, `AGENT_BUS_TOKEN` and `AGENT_BUS_AGENT`.
+
+**A conversation is continued only by its own turns** (#42). The memory is kept under the bus task
+that last continued it, with the account and workspace from Lake's claim reply, never under the
+`conversation_id` a turn names. A turn continues it only when Lake's `prior_turn` names that task
+in the same account and workspace; Lake attaches `prior_turn` only for the person who asked the
+earlier turn. Any other turn starts a new conversation and leaves the old one untouched: another
+account or a member naming the id, a turn of another `kind`, and every direct `/v1/turn` call,
+which has no claim and keeps no conversation.
 
 ## Evals
 
@@ -182,5 +190,6 @@ its trace without the key).
 
 ## Known failures and limits
 
-- Conversations are in memory: restarting the service forgets them.
+- Conversations are in memory: restarting the service, or a turn served by another replica,
+  starts a new one.
 - A delegated agent's answer is reported as it came back; Ask Orama does not re-check it.

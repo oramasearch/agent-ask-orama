@@ -42,8 +42,15 @@ offer `agent-eval-generator`, `agent-autosuggest-corpus` and `agent-project-corp
 names, with the eval and training-corpus routing rule, and that the prompt keeps none of the old
 names (ApplicationAgent, ExperimentsAgent, Corpus Generator).
 
-`test_lake_bus.py` covers task receipt and result publication on lake's agent bus, and publishes an
-unfinished turn as `failed` with its partial answer.
+`test_lake_bus.py` covers task receipt and result publication on lake's agent bus, hands the turn
+the claim reply's task, account and workspace as `claim`, and publishes an unfinished turn as
+`failed` with its partial answer.
+
+`test_conversation_owner.py` (agent-ask-orama#42) runs bus turns that share one `conversation_id`:
+the owner's next turn, with Lake's `prior_turn`, continues the conversation; another account, even
+naming the owner's task as its prior turn, and a member of the same workspace with another `kind`
+each see a new conversation and leave nothing in the owner's; a direct turn with no claim keeps no
+conversation, whatever its body says; and the claim is the claim reply's, not the body's.
 
 `test_release.py` reads the version from `pyproject.toml` (and the installed package) and checks
 that `docs/releases/v<version>.md` exists, names it in its heading and is listed in

@@ -107,6 +107,13 @@ def _log(**fields: Any) -> None:
     print(json.dumps({"bus": True, **fields}, default=str), flush=True)
 
 
+def turn_body(claimed: dict[str, Any]) -> dict[str, Any]:
+    """The claimed task's body, with what Lake's claim reply says of the task as `claim`: its id,
+    account and workspace. They come from the reply, never from the body (agent-ask-orama#42)."""
+    claim = {key: claimed.get(key) or "" for key in ("task_id", "customer_id", "workspace_id")}
+    return {**(claimed.get("body") or {}), "claim": claim}
+
+
 def run_task(bus: LakeBus, handle: Callable[[dict[str, Any]], dict[str, Any]],
              claimed: dict[str, Any]) -> dict[str, Any]:
     """One claimed task: the turn runs, and its answer goes back on the bus. Returns the answer."""
@@ -116,7 +123,7 @@ def run_task(bus: LakeBus, handle: Callable[[dict[str, Any]], dict[str, Any]],
     except BusError as error:
         _log(task=task_id, progress_not_published=str(error))
     try:
-        answer = handle(claimed.get("body") or {})
+        answer = handle(turn_body(claimed))
     except Exception as error:  # a failed turn is an answer, not a dead worker
         answer = {"ok": False, "error": f"{type(error).__name__}: {error}"}
     if answer.get("ok"):
