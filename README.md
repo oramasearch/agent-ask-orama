@@ -99,17 +99,22 @@ and calls this service for every message.
 | Route | What it does |
 |---|---|
 | `GET /healthz` | the agent, its release `version`, the model and prompt version |
-| `POST /v1/turn` | `{conversation_id, message, lake_token, customer_id, page, lake_url?}` → `{ok, conversation_id, trace_id, reply, reads, proposals, delegations, rounds, incomplete}`; a turn out of tool rounds is `ok: false` (HTTP 422) with its partial answer as `error` |
+| `POST /v1/turn` | `{conversation_id, message, lake_token, customer_id, page}` → `{ok, conversation_id, trace_id, reply, reads, proposals, delegations, rounds, incomplete}`; a turn out of tool rounds is `ok: false` (HTTP 422) with its partial answer as `error` |
 
 `AGENT_SERVICE_TOKEN` is required as a bearer (only lake calls it), compared in constant time
 (`401` otherwise); with it unset or empty the route fails closed and refuses every turn with `503`. `LAKE_URL` is lake's
 in-cluster address; `ASK_ORAMA_MODEL` the model (default `gpt-5.5`). **The model is reached through
-lake** (lake#248, lake `docs/api/model-gateway.md`): every call goes to `<lake_url>/openai/v1` with the
+lake** (lake#248, lake `docs/api/model-gateway.md`): every call goes to `<LAKE_URL>/openai/v1` with the
 turn's own `lake_token` as the API key (`model.py`), so lake counts its tokens in the turn's workspace
 and enforces the account's model-token limit. The service needs no `OPENAI_API_KEY`; only the offline
 evals (`evals.py`), which run for no workspace, call OpenAI directly. Conversations live in
 memory (below). Every turn is a trace in
 `TRACE_DIR`, never with the person's key.
+
+**A turn's credential goes only to Lake at this service's own `LAKE_URL`** (#39). Every Lake read
+and every model call of a turn uses `LAKE_URL`; a `lake_url` in the turn is ignored, so a caller
+cannot have the person's key sent to a host it names. With `LAKE_URL` unset, or not an absolute
+http(s) URL without user info, every turn is refused before a request is made.
 
 **Turns arrive on lake's agent bus** (lake `docs/api/agent-bus.md`). `lake_bus.py` long-polls
 `receive_agent_tasks` through lake with this agent's own bus credential (`AGENT_BUS_TOKEN`). It

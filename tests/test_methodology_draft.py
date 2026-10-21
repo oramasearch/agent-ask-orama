@@ -155,6 +155,7 @@ def test_the_service_answers_a_methodology_draft_turn_and_traces_it_without_the_
     monkeypatch.setattr(md, "pypi_wheel_hashes", lookup)
     state = service.State()
     state.trace_dir = tmp_path
+    state.lake_url = "http://lake"
     client = Scripted(proposal())
     result = service.run_turn({"kind": "methodology_draft", "message": "late payers",
                                "lake_token": "lat.task.secret", "lake_url": "http://lake",
