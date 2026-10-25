@@ -25,3 +25,6 @@
 - [`how-to/`](how-to/) — questions about using Lake answered from Lake's Docs: the exact page
   path, linked, and only the formats a guide states (prompt v14, lake#817).
 - [`mcp/`](mcp/) — the workspace's connected MCP tools, read as data, changes proposed (lake#652).
+- [`proposals/`](proposals/) — a proposal names only a project that exists, a new project is one
+  `compile_pipeline` with `create_project`, and Lake's record of each earlier proposal decides the
+  next turn (prompt v15, lake#1193, lake#1194).

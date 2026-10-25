@@ -21,7 +21,7 @@ from typing import Any
 from openai import OpenAI
 
 from agent_ask_orama import lake_bus
-from agent_ask_orama.agent import PROMPT_VERSION, Turn, answer_turn
+from agent_ask_orama.agent import PROMPT_VERSION, Turn, answer_turn, proposal_states
 from agent_ask_orama.methodology_draft import methodology_draft_turn
 from agent_ask_orama.model import gateway_client
 
@@ -66,7 +66,9 @@ def run_turn(body: dict[str, Any], state: State, client: OpenAI | None = None,
         return run_methodology_draft(body, state, conversation, token, lake_url, client)
     turn = Turn(message=message, lake_url=lake_url, lake_token=token,
                 customer_id=body.get("customer_id") or "", page=body.get("page") or {},
-                conversation_id=conversation)
+                conversation_id=conversation,
+                # What became of the conversation's earlier proposals (lake#1194).
+                proposal_states=proposal_states(body.get("context")))
     # The model is reached through lake with the turn's own key, which counts its tokens in the
     # turn's workspace (lake#248); this agent holds no provider key.
     model = client or gateway_client(lake_url, token)

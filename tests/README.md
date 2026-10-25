@@ -45,6 +45,14 @@ names (ApplicationAgent, ExperimentsAgent, Corpus Generator).
 `test_lake_bus.py` covers task receipt and result publication on lake's agent bus, and publishes an
 unfinished turn as `failed` with its partial answer.
 
+Its proposal coverage (lake#1193, lake#1194) serves a lake whose engine holds a set of projects
+(`ProjectsLake`): a `compile_intent` for a missing project is refused in the turn and the
+`compile_pipeline` with `create_project` that follows is the only proposal; a taken name is
+refused; an unreadable project is left to lake; Lake's `context.proposals` is read and its note
+reaches the model; a reply pointing at a failed proposal is corrected once; and the service runs the
+whole conversation: propose, confirm fails, "create it then", a new valid proposal. See
+[`../docs/proposals/`](../docs/proposals/).
+
 `test_release.py` reads the version from `pyproject.toml` (and the installed package) and checks
 that `docs/releases/v<version>.md` exists, names it in its heading and is listed in
 `docs/releases/README.md`, and that `/healthz` reports it.

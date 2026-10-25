@@ -68,6 +68,14 @@ and calls this service for every message.
   checked the way Lake's Validate checks code before anything runs. Nothing is written: the person
   reviews it and Create commits it ([`docs/methodologies/`](docs/methodologies/#drafting-a-workspace-methodology-lake688)).
 
+- **It proposes only what can work, and knows what became of each proposal** (prompt v15,
+  [lake#1193](https://github.com/oramasearch/lake/issues/1193),
+  [lake#1194](https://github.com/oramasearch/lake/issues/1194)). A proposal naming a project is
+  checked with `get_project` first; a new project's pipeline is one `compile_pipeline` with
+  `create_project`; and each turn reads Lake's record of the conversation's proposals (`pending`,
+  `confirmed`, `failed`, `withheld`), so after a failed confirm "create it then" gets a new,
+  corrected proposal ([`docs/proposals/`](docs/proposals/)).
+
 - **It compares trained models in one read.** `compare_models` lists every model (or one
   project's) with its held-out scores, best first, from the workspace's `list_models`, so "which
   model scored best" is answered within the turn (agent-ask-orama#14, [`docs/models/`](docs/models/)).
