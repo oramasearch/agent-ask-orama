@@ -2018,6 +2018,7 @@ def test_after_a_failed_confirm_create_it_then_gets_a_new_valid_proposal(tmp_pat
     corrected = {key: value for key, value in NEW_PIPELINE.items() if key != "methodology"}
     state = service.State()
     state.trace_dir = tmp_path
+    state.lake_url = "http://lake"  # the service's own LAKE_URL; a turn's lake_url is ignored (#40)
     body = {"lake_token": "person-key", "lake_url": "http://lake", "customer_id": "c-1",
             "conversation_id": "conv-1193"}
     lake = lambda: agent.Lake(turn(), transport=httpx.MockTransport(fake))  # noqa: E731
