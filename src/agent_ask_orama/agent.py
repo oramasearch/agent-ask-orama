@@ -23,7 +23,7 @@ from typing import Any
 import httpx
 from openai import OpenAI
 
-PROMPT_VERSION = "v14"
+PROMPT_VERSION = "v15"
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_ROUNDS = 10
 OLD_ENGINE_ISSUE = "zetta#1061"
@@ -105,6 +105,17 @@ ENGINE_NAMES = {lake: engine for engine, lake in LAKE_NAMES.items()}
 LAKE_OWN = frozenset({"get_experiment", "list_solutions", "get_solution", "create_solution"})
 WORKSPACE_CALLS = {"lake_read": "workspace_query", "lake_propose": "workspace_act"}
 
+# The workspace operations (engine names, as engine_operation answers them) whose `project` names a
+# project that must already exist (lake#1193). compile_pipeline is one unless it carries
+# `create_project`, which must name a project that does not exist yet.
+OWNING_PROJECT_OPERATIONS = frozenset({
+    "compile_intent", "capture_intent", "compile_n8n", "compile_python", "import_n8n",
+    "save_graph", "gate", "run", "deploy", "approve_plan",
+    "compile_pipeline", "run_pipeline", "edit_pipeline", "create_pipeline",
+})
+# How many of lake's recorded proposals a turn is told about, newest last.
+PROPOSAL_STATES_SHOWN = 10
+
 
 @dataclass
 class Capability:
@@ -132,6 +143,10 @@ class Turn:
     customer_id: str = ""
     page: dict[str, Any] = field(default_factory=dict)
     conversation_id: str = ""
+    # What became of this conversation's earlier proposals, as lake recorded them (lake#1194):
+    # `{capability, input, state: pending|confirmed|failed|withheld, error?, code?, retry?}`,
+    # oldest first. Lake's record, not this process's memory: it survives a restart.
+    proposal_states: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -736,6 +751,68 @@ def page_text(page: dict[str, Any]) -> str:
     return text + ")"
 
 
+def proposal_states(context: Any) -> list[dict[str, Any]]:
+    """Lake's `context.proposals` for a turn, keeping only well-formed entries (lake#1194)."""
+    items = context.get("proposals") if isinstance(context, dict) else None
+    if not isinstance(items, list):
+        return []
+    return [item for item in items
+            if isinstance(item, dict) and isinstance(item.get("capability"), str)
+            and item.get("state") in ("pending", "confirmed", "failed", "withheld")]
+
+
+def proposal_states_text(states: list[dict[str, Any]]) -> str:
+    """The turn's note of what became of each earlier proposal, Lake's record first and last."""
+    lines = []
+    for state in states[-PROPOSAL_STATES_SHOWN:]:
+        shown = json.dumps(state.get("input") or {}, sort_keys=True)
+        if len(shown) > 300:
+            shown = shown[:300] + "…"
+        what = str(state.get("state"))
+        if what == "failed":
+            what += f": {state.get('error') or 'no reason recorded'}"
+            if state.get("retry"):
+                what += " (trying the same proposal again may work)"
+        elif what == "withheld":
+            what += f" (never offered): {state.get('error') or 'no reason recorded'}"
+        lines.append(f"- {state['capability']} {shown}: {what}")
+    return (
+        "Lake's record of the changes you proposed earlier in this conversation, oldest first. It "
+        "is the truth, whatever was said before:\n" + "\n".join(lines) + "\n"
+        "Only a `pending` proposal can still be confirmed. A `failed` or `withheld` one can never "
+        "be confirmed: never send the person to it. When the person asks to go ahead after one "
+        "failed (\"create it then\", \"do it\", \"fix it\"), propose a new, corrected change with "
+        "lake_propose in this turn that addresses its error, then say: \"Here is the corrected "
+        "change; confirm it below.\""
+    )
+
+
+def points_at_nothing(answer: Answer, states: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The failed or withheld proposal a reply sends the person to confirm, when nothing waits.
+
+    A reply that proposes nothing new and tells the person to confirm, when Lake records no
+    pending proposal and the latest one failed or was withheld, points at a proposal that can no
+    longer run (lake#1194). Answers that proposal, or None.
+    """
+    if answer.proposals or not states or "confirm" not in (answer.reply or "").lower():
+        return None
+    if any(state.get("state") == "pending" for state in states):
+        return None
+    latest = states[-1]
+    return latest if latest.get("state") in ("failed", "withheld") else None
+
+
+def correction(latest: dict[str, Any]) -> str:
+    reason = latest.get("error") or "no reason recorded"
+    return (
+        f"Your reply sends the person to confirm a proposal, but none is waiting: the latest one "
+        f"({latest.get('capability')}) {latest.get('state')}: {reason}. Do not send them to it. "
+        "Propose the corrected change now with lake_propose, addressing that error, and say: "
+        "\"Here is the corrected change; confirm it below.\" If you cannot propose one, say what "
+        "is missing."
+    )
+
+
 def answer_turn(turn: Turn, history: list[dict[str, Any]], client: OpenAI, model: str,
                 lake: Lake | None = None) -> Answer:
     """Continue the conversation in `history` (system first when non-empty) by one turn."""
@@ -751,7 +828,11 @@ def answer_turn(turn: Turn, history: list[dict[str, Any]], client: OpenAI, model
             history.append({"role": "system", "content":
                             (PROMPTS / f"{PROMPT_VERSION}.md").read_text() + index_text(index)
                             + connected_text(connected)})
+        if turn.proposal_states:
+            history.append({"role": "system",
+                            "content": proposal_states_text(turn.proposal_states)})
         history.append({"role": "user", "content": turn.message + page_text(turn.page)})
+        corrected = False
         for round_number in range(1, MAX_ROUNDS + 1):
             answer.rounds = round_number
             message = client.chat.completions.create(model=model, messages=history,
@@ -759,7 +840,13 @@ def answer_turn(turn: Turn, history: list[dict[str, Any]], client: OpenAI, model
             history.append(message.model_dump(exclude_none=True))
             if not message.tool_calls:
                 answer.reply = message.content or ""
-                return answer
+                stale = None if corrected else points_at_nothing(answer, turn.proposal_states)
+                if stale is None:
+                    return answer
+                # Once per turn: the reply pointed at a proposal that can no longer run.
+                corrected = True
+                history.append({"role": "system", "content": correction(stale)})
+                continue
             for call in message.tool_calls:
                 try:
                     arguments = json.loads(call.function.arguments or "{}")
@@ -907,6 +994,59 @@ def follow(lake: Lake, customer_id: str, task_id: str, budget: float = FOLLOW_SE
             return {"ok": True, "value": task}
 
 
+def project_exists(project: str, index: dict[str, Capability], turn: Turn, lake: Lake,
+                   answer: Answer) -> bool | None:
+    """Whether the workspace has `project` (by name or id), read as the person; None when the read
+    settles nothing (lake#1193)."""
+    named = index.get("get_project")
+    if named is not None:
+        body = lake.call(named.name, with_customer(named, {"name": project}, turn.customer_id),
+                         read=named.get)
+        answer.reads.append({"capability": named.name, "input": {"name": project},
+                             "ok": bool(body.get("ok"))})
+    elif "workspace_query" in index:
+        body = lake.call("workspace_query", with_customer(None, {
+            "capability": "get_project", "input": {"name": project}}, turn.customer_id),
+            read=False)
+        answer.reads.append({"capability": "workspace_query",
+                             "input": {"capability": "get_project", "name": project},
+                             "ok": bool(body.get("ok"))})
+    else:
+        return None
+    if body.get("ok"):
+        return True
+    if (body.get("error") or {}).get("code") == "not_found":
+        return False
+    return None
+
+
+def project_refusal(operation: str | None, operation_input: Any, index: dict[str, Capability],
+                    turn: Turn, lake: Lake, answer: Answer) -> str | None:
+    """Why a proposal naming a project cannot work, before it is offered (lake#1193): a project
+    that does not exist, or a new project whose name is taken. None when it can, or when the
+    project cannot be read now (lake checks again)."""
+    if operation not in OWNING_PROJECT_OPERATIONS or not isinstance(operation_input, dict):
+        return None
+    project = operation_input.get("project")
+    if not isinstance(project, str) or not project:
+        return None
+    creates = operation == "compile_pipeline" and operation_input.get("create_project") is True
+    exists = project_exists(project, index, turn, lake, answer)
+    if exists is None or exists != creates:
+        return None
+    if creates:
+        return (f"FAILED: conflict A project named '{project}' already exists, so "
+                "compile_pipeline cannot create it; nothing was proposed. Propose it without "
+                "create_project to add the pipeline to that project, or choose a new name.")
+    return (f"FAILED: not_found There is no project named '{project}' in this workspace, so "
+            f"{operation} cannot run on it; nothing was proposed. For a pipeline in a new "
+            "project, propose compile_pipeline with {\"project\": \"" + project + "\", "
+            "\"intent\": <what it is for>, \"create_project\": true} (with \"dataset\" and "
+            "\"methodology\" when known): one confirmation creates the project and compiles its "
+            "pipeline. To use an existing project, read list_projects and propose again with its "
+            "name.")
+
+
 def handle(name: str, arguments: dict[str, Any], index: dict[str, Capability], turn: Turn,
            lake: Lake, answer: Answer, methodologies: MethodologyCatalog,
            solutions: SolutionCatalog, connected: dict[str, dict[str, Any]] | None = None) -> str:
@@ -1024,6 +1164,9 @@ def handle(name: str, arguments: dict[str, Any], index: dict[str, Capability], t
             refusal = methodologies.refusal(methodology)
             if refusal:
                 return refusal
+        refusal = project_refusal(operation, operation_input, index, turn, lake, answer)
+        if refusal:
+            return refusal
         creation = solution_creation(operation, operation_input)
         if creation is not None:
             refusal = solutions.refusal(*creation)

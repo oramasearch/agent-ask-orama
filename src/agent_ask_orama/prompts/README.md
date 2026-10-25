@@ -6,6 +6,12 @@ Each prompt behavior change creates a new version; previous versions remain for 
 - `methodology_draft_v1.md` is the `methodology_draft` turn's own prompt (lake#688,
   `methodology_draft.py`, `DRAFT_PROMPT_VERSION`): the manifest, the fit/predict/score interface
   and the Data object, standard library preferred, pins without hashes (the agent looks them up).
+- `v15.md` proposes only what can work (lake#1193, lake#1194): a project a proposal names must
+  exist (read `list_projects` first; lake and the agent both refuse one that does not); a new
+  project's pipeline is one `compile_pipeline` with `create_project: true`; and lake's record of
+  each earlier proposal (`pending`, `confirmed`, `failed`, `withheld`) is the truth, so after a
+  failure "create it then" gets a new, corrected proposal, never a pointer to the failed one
+  (`docs/proposals/`).
 - `v14.md` answers questions about using Lake from Lake's Docs (`list_docs`, then `get_doc`):
   pages, tabs and buttons named exactly as the guide and the navigation show them and linked, and
   only the formats and limits the guide states; "Lake Console" is the product, not a page

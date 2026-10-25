@@ -508,7 +508,7 @@ def test_apps_are_listed_from_lake():
         message(tool_calls=[call("lake_read", capability="list_apps")]),
         message(content="You have one App, risk-console, and it is running."))
     answer = run(client, fake, message="What Apps do I have?")
-    assert "prompt v14" in client.seen[0][0]["content"]
+    assert "prompt v15" in client.seen[0][0]["content"]
     assert answer.reads == [{
         "capability": "list_apps",
         "input": {"customer_id": "c-1"},
@@ -1043,7 +1043,7 @@ def test_a_runnable_methodology_can_be_proposed_after_reading_the_registry():
             impact="Recompiles segments as an M-3 Pipeline")]),
         message(content="I proposed the runnable M-3 segmentation Pipeline."))
     answer = run(client, fake, message="Can you segment my customers?")
-    assert "prompt v14" in client.seen[0][0]["content"]
+    assert "prompt v15" in client.seen[0][0]["content"]
     assert answer.proposals == [{
         "capability": "workspace_act",
         "input": {
@@ -1106,7 +1106,7 @@ def test_a_runnable_solution_is_read_from_the_registry_and_proposed():
             impact="Builds the S-1 level 1 Pipeline in retention")]),
         message(content="I proposed the S-1 level 1 Pipeline for your confirmation."))
     answer = run(client, fake, message="Build S-1 level 1 in retention from customers.")
-    assert "prompt v14" in client.seen[0][0]["content"]
+    assert "prompt v15" in client.seen[0][0]["content"]
     detail = client.seen[2][-1]["content"]
     assert "Customer retention" in detail
     assert "minimum_level" in detail
@@ -1743,7 +1743,7 @@ def test_the_prompt_names_design_agents_and_train_agents():
     import agent_ask_orama
     prompt = (Path(agent_ask_orama.__file__).parent / "prompts"
               / f"{agent.PROMPT_VERSION}.md").read_text()
-    assert agent.PROMPT_VERSION == "v14"
+    assert agent.PROMPT_VERSION == "v15"
     assert "Design (projects,\nPipelines, solutions, agents)" in prompt
     assert "Train (agents to train, runs, experiments, models)" in prompt
     assert "Train (agents, data, runs)" not in prompt
@@ -1878,3 +1878,173 @@ def test_the_how_to_eval_holds_the_answer_to_the_homes_first_suggestion():
     # Turning a person away from a refused format, as the guide does, is not offering it.
     steered = good + " Parquet and Excel are not accepted: save the file as CSV first."
     assert evals.grade(case, said(steered), index, []).passed
+
+
+# lake#1193, lake#1194: a proposal names only a project that exists, a new project is one
+# compile_pipeline with create_project, and lake's record of each earlier proposal decides the next.
+PROJECT_OPENAPI = {"paths": {
+    **NAMED_OPENAPI["paths"],
+    "/v1/compile_pipeline": named_action("project", "intent", "dataset", "methodology",
+                                         "create_project"),
+}}
+
+
+class ProjectsLake(FakeLake):
+    """A lake whose workspace engine holds `projects`; get_project answers not_found for others."""
+
+    def __init__(self, projects) -> None:
+        super().__init__(openapi=PROJECT_OPENAPI)
+        self.projects = set(projects)
+
+    def engine(self, sent):
+        if sent.get("capability") == "get_project":
+            name = (sent.get("input") or {}).get("name")
+            if name not in self.projects:
+                return httpx.Response(200, json={"ok": False, "error": {
+                    "code": "not_found",
+                    "message": f"no project named '{name}' (or with that id)"}})
+            return httpx.Response(200, json={"ok": True, "value": {"name": name, "graphs": []}})
+        return super().engine(sent)
+
+
+MISSING = "Customer Segmentation EDA Dashboard"
+NEW_PIPELINE = {"project": MISSING, "intent": "Segment customers into behavioural clusters",
+                "dataset": "datasets.ux_review_20261018_customers", "methodology": "M-3",
+                "create_project": True}
+
+
+def test_a_proposal_for_a_missing_project_is_refused_and_one_proposal_creates_it():
+    fake = ProjectsLake({"segments"})
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="list_methodologies")]),
+        message(tool_calls=[call("lake_propose", capability="compile_intent", input={
+            "project": MISSING, "intent": "Segment customers", "methodology": "M-3"},
+            impact="Proposes a new M-3 clustering pipeline")]),
+        message(tool_calls=[call("lake_propose", capability="compile_pipeline",
+                                 input=NEW_PIPELINE,
+                                 impact="Creates the project and its M-3 clustering pipeline")]),
+        message(content="Here is the change; confirm it below."))
+    answer = run(client, fake, message="Build a segmentation dashboard as a new project.")
+    refusal = client.seen[2][-1]["content"]
+    assert refusal.startswith("FAILED: not_found There is no project named "
+                              "'Customer Segmentation EDA Dashboard'")
+    assert '"create_project": true' in refusal and "compile_pipeline" in refusal
+    assert answer.proposals == [{
+        "capability": "compile_pipeline",
+        "input": {"customer_id": "c-1", **NEW_PIPELINE},
+        "impact": "Creates the project and its M-3 clustering pipeline",
+    }], "only the proposal that can work is recorded"
+    looked = [read for read in answer.reads if read["input"].get("capability") == "get_project"]
+    assert [read["input"]["name"] for read in looked] == [MISSING, MISSING], \
+        "each proposal's project is read as the person before it is recorded"
+    assert not any(request.url.path in ("/v1/compile_intent", "/v1/compile_pipeline",
+                                        "/v1/workspace_act") for request in fake.requests), \
+        "nothing is run to check"
+
+
+def test_a_new_project_whose_name_is_taken_is_refused():
+    fake = ProjectsLake({"segments"})
+    client = Scripted(
+        message(tool_calls=[call("lake_propose", capability="compile_pipeline", input={
+            "project": "segments", "intent": "Segment customers", "create_project": True},
+            impact="A new project")]),
+        message(content="segments already exists; I can add the pipeline to it."))
+    answer = run(client, fake)
+    assert not answer.proposals
+    assert client.seen[1][-1]["content"].startswith(
+        "FAILED: conflict A project named 'segments' already exists")
+
+
+def test_a_project_that_cannot_be_read_now_is_left_to_lake():
+    class Down(ProjectsLake):
+        def engine(self, sent):
+            if sent.get("capability") == "get_project":
+                return httpx.Response(503, json={"ok": False, "error": {
+                    "code": "workspace_not_ready", "message": "starting"}})
+            return super().engine(sent)
+
+    client = Scripted(
+        message(tool_calls=[call("lake_propose", capability="check_pipeline", input={
+            "project": "segments", "graph": "g"}, impact="Checks the pipeline")]),
+        message(content="Proposed."))
+    answer = run(client, Down(set()))
+    assert [p["capability"] for p in answer.proposals] == ["check_pipeline"]
+
+
+def test_lakes_proposal_record_is_read_from_the_turn():
+    context = {"proposals": [
+        {"message_id": "m-1", "index": 0, "capability": "compile_intent",
+         "input": {"project": "segments"}, "state": "failed", "code": "not_found",
+         "error": "no project named 'segments' (or with that id).", "retry": False},
+        {"capability": 7, "state": "failed"},
+        {"capability": "create_index", "state": "made up"},
+        "not a row",
+    ]}
+    states = agent.proposal_states(context)
+    assert [state["capability"] for state in states] == ["compile_intent"]
+    assert agent.proposal_states(None) == [] and agent.proposal_states({"proposals": {}}) == []
+    text = agent.proposal_states_text(states)
+    assert "compile_intent" in text and "failed: no project named 'segments'" in text
+    assert "never send the person to it" in text
+
+
+def test_a_reply_points_at_nothing_only_when_no_proposal_waits():
+    failed = {"capability": "compile_intent", "state": "failed", "error": "no project"}
+    pending = {"capability": "create_index", "state": "pending"}
+    told = agent.Answer(reply="Confirm the proposal in Lake.")
+    assert agent.points_at_nothing(told, [failed]) == failed
+    assert agent.points_at_nothing(told, [failed, pending]) is None, "one still waits"
+    assert agent.points_at_nothing(told, []) is None
+    assert agent.points_at_nothing(agent.Answer(reply="It failed: no project."), [failed]) is None
+    proposed = agent.Answer(reply="Confirm it below.", proposals=[{"capability": "x"}])
+    assert agent.points_at_nothing(proposed, [failed]) is None
+
+
+def test_after_a_failed_confirm_create_it_then_gets_a_new_valid_proposal(tmp_path):
+    # The conversation of lake#1193 and lake#1194, as the service runs it: Ask Orama proposes
+    # compile_intent on a project that exists; the project is gone when the person confirms, so
+    # lake records the confirm as failed; "create it then" arrives with lake's record, and the
+    # answer is a new, valid proposal, not a pointer to the failed one.
+    fake = ProjectsLake({MISSING})
+    # No methodology: naming one needs this turn's registry read, which this test leaves out.
+    corrected = {key: value for key, value in NEW_PIPELINE.items() if key != "methodology"}
+    state = service.State()
+    state.trace_dir = tmp_path
+    body = {"lake_token": "person-key", "lake_url": "http://lake", "customer_id": "c-1",
+            "conversation_id": "conv-1193"}
+    lake = lambda: agent.Lake(turn(), transport=httpx.MockTransport(fake))  # noqa: E731
+    first = service.run_turn({**body, "message": "Segment my customers."}, state, Scripted(
+        message(tool_calls=[call("lake_propose", capability="compile_intent", input={
+            "project": MISSING, "intent": "Segment customers"},
+            impact="A clustering pipeline")]),
+        message(content="I proposed the clustering pipeline; confirm it in Lake.")), lake())
+    assert first["ok"] and [p["capability"] for p in first["proposals"]] == ["compile_intent"]
+
+    fake.projects.clear()  # gone before the person confirmed: lake records the confirm as failed
+    failed = {"message_id": "m-2", "index": 0, "capability": "compile_intent",
+              "input": first["proposals"][0]["input"], "state": "failed", "code": "not_found",
+              "error": f"no project named '{MISSING}' (or with that id). Ask Orama again with "
+                       "what to use and it will propose the change again.", "retry": False}
+    client = Scripted(
+        # What Ask Orama said on lake-dev: a pointer to the proposal that already failed.
+        message(content="I can't confirm it from chat. The clustering pipeline is already "
+                        "proposed, not created. To create it, confirm the proposal in Lake."),
+        message(tool_calls=[call("lake_propose", capability="compile_pipeline",
+                                 input=corrected,
+                                 impact="Creates the project and its clustering pipeline")]),
+        message(content="Here is the corrected change; confirm it below."))
+    second = service.run_turn({**body, "message": "create it then",
+                               "context": {"proposals": [failed]}}, state, client, lake())
+    assert second["ok"]
+    seen = client.seen[0]
+    note = seen[-2]
+    assert note["role"] == "system" and "failed: no project named" in note["content"], \
+        "lake's record comes just before the person's message"
+    assert seen[-1]["role"] == "user" and seen[-1]["content"].startswith("create it then")
+    assert "none is waiting" in client.seen[1][-1]["content"], "the stale pointer is corrected"
+    assert second["proposals"] == [{
+        "capability": "compile_pipeline",
+        "input": {"customer_id": "c-1", **corrected},
+        "impact": "Creates the project and its clustering pipeline",
+    }]
+    assert second["reply"] == "Here is the corrected change; confirm it below."
