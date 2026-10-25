@@ -125,6 +125,16 @@ earlier turn. Any other turn starts a new conversation and leaves the old one un
 account or a member naming the id, a turn of another `kind`, and every direct `/v1/turn` call,
 which has no claim and keeps no conversation.
 
+**A task is claimed only when a worker is free to run it** (agent-ask-orama#43, LSR-075). The
+service runs `AGENT_BUS_WORKERS` turns at once (default 4). While every worker is busy it receives
+nothing more, and a task it cannot run yet stays unclaimed on the bus, where another replica may
+take it; no claimed body or task credential waits in the process. One customer holds at most
+`AGENT_BUS_TENANT_WORKERS` workers (default one fewer than the workers, at least 1), and a freed
+worker goes to the waiting customer holding the fewest, so one tenant's burst cannot take every
+worker from the others. Received task ids waiting for a worker (the dispatch row only: id,
+customer, kind) are capped at 256; any beyond stay on the bus, where lake's recovery loop
+republishes unclaimed tasks.
+
 ## Evals
 
 `ask-orama-evals` (`evals.py`) generates cases from the live lake's capability index (a sample of
