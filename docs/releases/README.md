@@ -10,6 +10,7 @@ verified; it is never produced by a second build.
 
 | Release | Date | Summary |
 |---|---|---|
+| [v0.2.0](v0.2.0.md) | 2026-10-25 | A minor: the security-review fixes (constant-time service token refused when unset, the credential only to `LAKE_URL`, conversations owned by Lake's claim and bounded, bus backpressure, no trace file), prompt v15 (only proposals that can work) and v16 (the Quickstart's model step) |
 | [v0.1.1](v0.1.1.md) | 2026-10-19 | A patch: prompt v14 answers how-to questions from Lake's Docs, with the exact page names and links (lake#817), and a `how_to` eval case |
 | [v0.1.0](v0.1.0.md) | 2026-10-17 | The first release: the Ask Orama turn on prompt v13 (read as the person, propose every change, delegate through Lake), the `methodology_draft` turn, the HTTP API, the agent bus worker and the private image |
 

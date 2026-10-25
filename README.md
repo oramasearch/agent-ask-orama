@@ -5,7 +5,7 @@
 **Agent Library**. lake shows it as a panel on every page ([lake#236](https://github.com/oramasearch/lake/issues/236))
 and calls this service for every message.
 
-**Current release: [v0.1.1](docs/releases/v0.1.1.md)** (2026-10-19, prompt v14).
+**Current release: [v0.2.0](docs/releases/v0.2.0.md)** (2026-10-25, prompt v16).
 
 ## What it does
 
