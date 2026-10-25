@@ -24,6 +24,9 @@
   evidence reads, proposal enforcement and older-engine behavior.
 - [`how-to/`](how-to/) — questions about using Lake answered from Lake's Docs: the exact page
   path, linked, and only the formats a guide states (prompt v14, lake#817).
+- [`quickstart/`](quickstart/) — the Quickstart's model step (lake#1182): the dataset named by the
+  page, ideas first, the strongest model proposed as `train_quickstart`, a corpus only when nothing
+  else fits (prompt v16).
 - [`mcp/`](mcp/) — the workspace's connected MCP tools, read as data, changes proposed (lake#652).
 - [`proposals/`](proposals/) — a proposal names only a project that exists, a new project is one
   `compile_pipeline` with `create_project`, and Lake's record of each earlier proposal decides the

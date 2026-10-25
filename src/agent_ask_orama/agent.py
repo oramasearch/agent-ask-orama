@@ -23,7 +23,7 @@ from typing import Any
 import httpx
 from openai import OpenAI
 
-PROMPT_VERSION = "v15"
+PROMPT_VERSION = "v16"
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_ROUNDS = 10
 OLD_ENGINE_ISSUE = "zetta#1061"
@@ -738,11 +738,30 @@ def agent_page_work(page: dict[str, Any]) -> str:
     return ""
 
 
+def quickstart_text(page: dict[str, Any]) -> str:
+    """What a turn from the Quickstart's model step is about (lake#1182): the dataset the person
+    just added, named by the page, and what to answer with. Empty for any other page."""
+    if not (page or {}).get("quickstart_id"):
+        return ""
+    dataset = str(page.get("dataset") or "the dataset")
+    path = str(page.get("dataset_path") or "")
+    rows = str(page.get("rows") or "")
+    sized = f"{dataset} ({path}{', ' + rows + ' rows' if rows else ''})" if path else dataset
+    return (f": the Quickstart's model step, about the dataset just added, {sized}. The dataset "
+            "is known: never ask which one. Answer with what is worth building on it, ideas "
+            "first (a model with train_quickstart, a derived target, clustering with M-3, "
+            "opportunities, an analysis, an app such as a dashboard), propose the strongest "
+            "model as train_quickstart with this quickstart_id, and offer a generated corpus only "
+            "when the data supports nothing else or the person asks")
+
+
 def page_text(page: dict[str, Any]) -> str:
     """The page context appended to the person's message, with what an agent page is for."""
     if not page:
         return ""
     text = f"\n\n(The person is on {json.dumps(page)}"
+    if quickstart_text(page):
+        return text + quickstart_text(page) + ")"
     work = agent_page_work(page)
     if work == "design":
         text += ": Design → Agents, where an agent is designed. Speak of designing it"
