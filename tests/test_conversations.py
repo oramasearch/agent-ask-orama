@@ -128,30 +128,45 @@ def test_the_limits_come_from_the_environment(monkeypatch):
     assert memory.max_conversations == 256 and memory.max_turns == 20
 
 
-def service_turn(state, body, client):
+def service_turn(state, body, client, task=None, prior=None):
+    """One turn as Lake's bus delivers it: a claim names the account, workspace and task, and
+    `prior_turn` the task it follows (#46 keys a conversation by that task, never by a named id)."""
+    if prior:
+        body = {**body, "prior_turn": {"task_id": prior}}
+    claim = {"customer_id": "c-1", "workspace_id": "w-1", "task_id": task} if task else None
     return service.run_turn(body, state, client,
-                            agent.Lake(turn(), transport=httpx.MockTransport(FakeLake())))
+                            agent.Lake(turn(), transport=httpx.MockTransport(FakeLake())), claim)
+
+
+def lake_state():
+    state = service.State()
+    state.lake_url = "http://lake"  # the service's own LAKE_URL (#40)
+    return state
+
+
+def key(task):
+    return ("c-1", "w-1", task)
 
 
 def test_many_conversations_keep_the_service_within_its_limit(monkeypatch):
     monkeypatch.setenv("ASK_ORAMA_CONVERSATIONS", "5")
-    state = service.State()
+    state = lake_state()
     for n in range(40):
-        result = service_turn(state, {"message": f"hi {n}", "lake_token": "person-key",
-                                      "lake_url": "http://lake", "conversation_id": f"conv-{n}"},
-                              Scripted(message(content="Hello.")))
+        result = service_turn(state, {"message": f"hi {n}", "lake_token": "person-key"},
+                              Scripted(message(content="Hello.")), task=f"t{n}")
         assert result["ok"], result
     assert len(state.conversations) == 5
-    assert sorted(state.conversations) == [f"conv-{n}" for n in range(35, 40)]
+    assert sorted(state.conversations) == sorted(key(f"t{n}") for n in range(35, 40))
 
 
 def test_one_long_conversation_keeps_only_its_last_turns(monkeypatch):
     monkeypatch.setenv("ASK_ORAMA_CONVERSATION_TURNS", "3")
-    state = service.State()
-    body = {"lake_token": "person-key", "lake_url": "http://lake", "conversation_id": "conv"}
+    state = lake_state()
+    body = {"lake_token": "person-key"}
     for n in range(10):
-        service_turn(state, {**body, "message": f"turn {n}"}, Scripted(message(content="ok")))
-    history = state.history("conv")
+        service_turn(state, {**body, "message": f"turn {n}"}, Scripted(message(content="ok")),
+                     task=f"t{n}", prior=f"t{n - 1}" if n else None)
+    history = state.conversations[key("t9")]
     people = [m["content"] for m in history if m["role"] == "user"]
     assert len(people) == 3 and people[0].startswith("turn 7"), people
     assert history[0]["role"] == "system"
@@ -166,23 +181,22 @@ class Failing:
 
 
 def test_a_turn_that_fails_leaves_nothing_in_the_conversation():
-    state = service.State()
-    body = {"message": "a very long question " * 1000, "lake_token": "person-key",
-            "lake_url": "http://lake", "conversation_id": "conv"}
+    state = lake_state()
+    body = {"message": "a very long question " * 1000, "lake_token": "person-key"}
     with pytest.raises(RuntimeError):
-        service_turn(state, body, Failing())
-    assert state.history("conv") == [], "the failed turn's message is not kept"
-    service_turn(state, {**body, "message": "hi"}, Scripted(message(content="Hello.")))
+        service_turn(state, body, Failing(), task="t1")
+    assert not state.conversations.get(key("t1")), "the failed turn's message is not kept"
+    service_turn(state, {**body, "message": "hi"}, Scripted(message(content="Hello.")), task="t2")
     with pytest.raises(RuntimeError):
-        service_turn(state, body, Failing())
-    kept = state.history("conv")
+        service_turn(state, body, Failing(), task="t3", prior="t2")
+    kept = state.conversations[key("t3")]
     assert [m["role"] for m in kept] == ["system", "user", "assistant"]
     assert kept[1]["content"].startswith("hi")
 
 
 def test_a_turn_writes_nothing_to_the_pods_disk(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("TRACE_DIR", str(tmp_path))
-    state = service.State()
+    state = lake_state()
     state.trace_dir = tmp_path  # where the service used to write; it must not now
     result = service_turn(state, {"message": "secret question", "lake_token": "person-key",
                                   "lake_url": "http://lake", "conversation_id": "conv"},
