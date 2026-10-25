@@ -789,6 +789,7 @@ def test_a_turn_out_of_rounds_ends_unfinished_with_an_honest_partial_answer(tmp_
     # As a service turn it is not ok, so the bus publishes `failed` with the partial answer.
     state = service.State()
     state.trace_dir = tmp_path
+    state.lake_url = "http://lake"
     client = Scripted(*reads, message(content="I did not finish this. Nothing found yet."))
     result = service.run_turn({"message": "hi", "lake_token": "person-key",
                                "lake_url": "http://lake"}, state, client,
@@ -825,6 +826,7 @@ def test_the_model_score_eval_needs_list_models_held_out_scores_and_a_finished_t
 def test_a_service_turn_needs_the_persons_key_and_keeps_the_conversation(tmp_path):
     state = service.State()
     state.trace_dir = tmp_path
+    state.lake_url = "http://lake"
     refused = service.run_turn({"message": "hi"}, state)
     assert not refused["ok"]
     fake = FakeLake()
@@ -1409,9 +1411,11 @@ def test_a_turn_calls_its_model_through_lakes_gateway_with_the_turns_key(tmp_pat
         url, token, http_client=httpx.Client(transport=httpx.MockTransport(gateway))))
     state = service.State()
     state.trace_dir = tmp_path
+    state.lake_url = "http://lake:8080/"
     fake = FakeLake()
+    # The turn's own lake_url is never used: the key goes to this service's LAKE_URL (#39).
     result = service.run_turn({"message": "hi", "lake_token": "lat.task.secret",
-                               "lake_url": "http://lake:8080/"}, state, None,
+                               "lake_url": "http://elsewhere:9"}, state, None,
                               agent.Lake(turn(), transport=httpx.MockTransport(fake)))
     assert result["ok"], result
     assert result["reply"] == "Hello."
@@ -2014,6 +2018,7 @@ def test_after_a_failed_confirm_create_it_then_gets_a_new_valid_proposal(tmp_pat
     corrected = {key: value for key, value in NEW_PIPELINE.items() if key != "methodology"}
     state = service.State()
     state.trace_dir = tmp_path
+    state.lake_url = "http://lake"  # the service's own LAKE_URL; a turn's lake_url is ignored (#40)
     body = {"lake_token": "person-key", "lake_url": "http://lake", "customer_id": "c-1",
             "conversation_id": "conv-1193"}
     lake = lambda: agent.Lake(turn(), transport=httpx.MockTransport(fake))  # noqa: E731

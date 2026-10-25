@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from openai import OpenAI
 
@@ -91,15 +92,37 @@ def health(state: State) -> dict[str, Any]:
             "model": state.model, "prompt_version": PROMPT_VERSION}
 
 
+DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def lake_address(configured: str) -> str | None:
+    """Lake's address from this service's own `LAKE_URL`, the only place a turn's credential is
+    ever sent (agent-ask-orama#39); None unless it is an absolute http(s) URL with no user info."""
+    url = configured.strip().rstrip("/")
+    try:
+        parts = urlsplit(url)
+        parts.port
+    except ValueError:
+        return None
+    if parts.scheme.lower() not in DEFAULT_PORTS or not parts.hostname or "@" in parts.netloc:
+        return None
+    return url
+
+
 def run_turn(body: dict[str, Any], state: State, client: OpenAI | None = None,
              lake=None, claim: object = None) -> dict[str, Any]:
     """One turn. `claim` is what Lake's claim reply said of the task (bus turns only); without
     it the turn keeps no conversation."""
     message = body.get("message") or ""
     token = body.get("lake_token") or ""
-    lake_url = body.get("lake_url") or state.lake_url
-    if not message or not token or not lake_url:
-        return {"ok": False, "error": "a turn needs a message, the person's lake_token and lake"}
+    if not message or not token:
+        return {"ok": False, "error": "a turn needs a message and the person's lake_token"}
+    # The turn's credential goes only to Lake at this service's own LAKE_URL. A turn's `lake_url`
+    # is ignored, so the key is never sent to a host the caller names (agent-ask-orama#39).
+    lake_url = lake_address(state.lake_url)
+    if lake_url is None:
+        return {"ok": False, "error": "LAKE_URL is not set: this agent sends a turn's credential "
+                                      "only to Lake's configured address"}
     conversation = body.get("conversation_id") or str(uuid.uuid4())
     if body.get("kind") == "methodology_draft":
         return run_methodology_draft(body, state, conversation, token, lake_url, client)
