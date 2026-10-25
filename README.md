@@ -101,7 +101,8 @@ and calls this service for every message.
 | `GET /healthz` | the agent, its release `version`, the model and prompt version |
 | `POST /v1/turn` | `{conversation_id, message, lake_token, customer_id, page, lake_url?}` → `{ok, conversation_id, trace_id, reply, reads, proposals, delegations, rounds, incomplete}`; a turn out of tool rounds is `ok: false` (HTTP 422) with its partial answer as `error` |
 
-`AGENT_SERVICE_TOKEN`, when set, is required as a bearer (only lake calls it). `LAKE_URL` is lake's
+`AGENT_SERVICE_TOKEN` is required as a bearer (only lake calls it), compared in constant time
+(`401` otherwise); with it unset or empty the route fails closed and refuses every turn with `503`. `LAKE_URL` is lake's
 in-cluster address; `ASK_ORAMA_MODEL` the model (default `gpt-5.5`). **The model is reached through
 lake** (lake#248, lake `docs/api/model-gateway.md`): every call goes to `<lake_url>/openai/v1` with the
 turn's own `lake_token` as the API key (`model.py`), so lake counts its tokens in the turn's workspace
