@@ -5,7 +5,7 @@
 **Agent Library**. lake shows it as a panel on every page ([lake#236](https://github.com/oramasearch/lake/issues/236))
 and calls this service for every message.
 
-**Current release: [v0.1.1](docs/releases/v0.1.1.md)** (2026-10-19, prompt v14).
+**Current release: [v0.2.0](docs/releases/v0.2.0.md)** (2026-10-25, prompt v16).
 
 ## What it does
 
@@ -40,6 +40,11 @@ and calls this service for every message.
   guide `list_docs` and `get_doc` find, naming each page as the navigation shows it, linked, and
   only the formats it states (prompt v14, [lake#817](https://github.com/oramasearch/lake/issues/817),
   [`docs/how-to/`](docs/how-to/README.md)).
+- **The Quickstart's model step starts from the dataset.** A turn whose `page` has `quickstart_id`
+  names the dataset just added; Ask Orama never asks which one, leads with ideas (a yes-or-no model,
+  a derived target, clustering, opportunities, an analysis, a dashboard app), proposes the strongest
+  model as `train_quickstart`, and offers a corpus only when nothing else fits (prompt v16,
+  [lake#1182](https://github.com/oramasearch/lake/issues/1182), [`docs/quickstart/`](docs/quickstart/README.md)).
 - **Its vocabulary is derived.** The capabilities it may name come from lake's `/v1/openapi.json`
   at every turn, less the ceremonies a person performs (signing in, recovering, minting
   credentials, reading secrets in the clear), named one by one in `EXCLUDED_CAPABILITIES`
@@ -68,6 +73,14 @@ and calls this service for every message.
   checked the way Lake's Validate checks code before anything runs. Nothing is written: the person
   reviews it and Create commits it ([`docs/methodologies/`](docs/methodologies/#drafting-a-workspace-methodology-lake688)).
 
+- **It proposes only what can work, and knows what became of each proposal** (prompt v15,
+  [lake#1193](https://github.com/oramasearch/lake/issues/1193),
+  [lake#1194](https://github.com/oramasearch/lake/issues/1194)). A proposal naming a project is
+  checked with `get_project` first; a new project's pipeline is one `compile_pipeline` with
+  `create_project`; and each turn reads Lake's record of the conversation's proposals (`pending`,
+  `confirmed`, `failed`, `withheld`), so after a failed confirm "create it then" gets a new,
+  corrected proposal ([`docs/proposals/`](docs/proposals/)).
+
 - **It compares trained models in one read.** `compare_models` lists every model (or one
   project's) with its held-out scores, best first, from the workspace's `list_models`, so "which
   model scored best" is answered within the turn (agent-ask-orama#14, [`docs/models/`](docs/models/)).
@@ -86,22 +99,66 @@ and calls this service for every message.
 | Route | What it does |
 |---|---|
 | `GET /healthz` | the agent, its release `version`, the model and prompt version |
-| `POST /v1/turn` | `{conversation_id, message, lake_token, customer_id, page, lake_url?}` → `{ok, conversation_id, trace_id, reply, reads, proposals, delegations, rounds, incomplete}`; a turn out of tool rounds is `ok: false` (HTTP 422) with its partial answer as `error` |
+| `POST /v1/turn` | `{conversation_id, message, lake_token, customer_id, page}` → `{ok, conversation_id, trace_id, reply, reads, proposals, delegations, rounds, incomplete}`; a turn out of tool rounds is `ok: false` (HTTP 422) with its partial answer as `error` |
 
-`AGENT_SERVICE_TOKEN`, when set, is required as a bearer (only lake calls it). `LAKE_URL` is lake's
+`AGENT_SERVICE_TOKEN` is required as a bearer (only lake calls it), compared in constant time
+(`401` otherwise); with it unset or empty the route fails closed and refuses every turn with `503`. `LAKE_URL` is lake's
 in-cluster address; `ASK_ORAMA_MODEL` the model (default `gpt-5.5`). **The model is reached through
-lake** (lake#248, lake `docs/api/model-gateway.md`): every call goes to `<lake_url>/openai/v1` with the
+lake** (lake#248, lake `docs/api/model-gateway.md`): every call goes to `<LAKE_URL>/openai/v1` with the
 turn's own `lake_token` as the API key (`model.py`), so lake counts its tokens in the turn's workspace
 and enforces the account's model-token limit. The service needs no `OPENAI_API_KEY`; only the offline
-evals (`evals.py`), which run for no workspace, call OpenAI directly. Conversations live in memory by
-id. Every turn is a trace in
-`TRACE_DIR`, never with the person's key.
+evals (`evals.py`), which run for no workspace, call OpenAI directly. Conversations live in memory, under the
+Lake task that last continued them (below).
+
+**Nothing the service keeps grows without limit** (agent-ask-orama#44, LSR-076). One pod serves
+every tenant on a lake, so its conversation memory (`conversations.py`) is bounded:
+
+| Limit | Setting | Default |
+|---|---|---|
+| Conversations kept; past it the least recently used goes | `ASK_ORAMA_CONVERSATIONS` | 256 |
+| Turns kept per conversation; the oldest whole turns go | `ASK_ORAMA_CONVERSATION_TURNS` | 20 |
+| Bytes per conversation (JSON of its messages); the oldest whole turns go | `ASK_ORAMA_CONVERSATION_BYTES` | 1 MiB |
+| Bytes of every conversation together; the least recently used go | `ASK_ORAMA_CONVERSATIONS_BYTES` | 64 MiB |
+| Idle time after which a conversation is dropped | `ASK_ORAMA_CONVERSATION_IDLE_SECONDS` | 3600 |
+
+The system message stays while any of a conversation does, and a turn is dropped whole, so a tool
+call never loses its answer. A turn that fails (the model unreachable, a read raising) leaves the
+conversation as it found it. A dropped conversation continues as a new one.
+
+**A turn writes nothing to the pod's disk.** It used to write a trace file per turn to `TRACE_DIR`,
+which grew without limit on a temporary volume every tenant shares. Lake keeps the turn's message
+and answer in the task's record in its workspace (lake `docs/api/agent-bus.md`). The service logs
+one line per turn instead: its `trace_id` (still in the answer), kind, prompt version, conversation
+id and how it ended, never what was said. `TRACE_DIR` is ignored.
+
+**A turn's credential goes only to Lake at this service's own `LAKE_URL`** (#39). Every Lake read
+and every model call of a turn uses `LAKE_URL`; a `lake_url` in the turn is ignored, so a caller
+cannot have the person's key sent to a host it names. With `LAKE_URL` unset, or not an absolute
+http(s) URL without user info, every turn is refused before a request is made.
 
 **Turns arrive on lake's agent bus** (lake `docs/api/agent-bus.md`). `lake_bus.py` long-polls
 `receive_agent_tasks` through lake with this agent's own bus credential (`AGENT_BUS_TOKEN`). It
 claims each task, whose body carries the task's credential as `lake_token`, runs it as
-`/v1/turn` would, and publishes `progress`, then the answer or `failed`. It starts when the
-operator sets `LAKE_URL`, `AGENT_BUS_TOKEN` and `AGENT_BUS_AGENT`.
+`/v1/turn` would (with the claim reply's task, account and workspace as `claim`), and publishes
+`progress`, then the answer or `failed`. It starts when the operator sets `LAKE_URL`, `AGENT_BUS_TOKEN` and `AGENT_BUS_AGENT`.
+
+**A conversation is continued only by its own turns** (#42). The memory is kept under the bus task
+that last continued it, with the account and workspace from Lake's claim reply, never under the
+`conversation_id` a turn names. A turn continues it only when Lake's `prior_turn` names that task
+in the same account and workspace; Lake attaches `prior_turn` only for the person who asked the
+earlier turn. Any other turn starts a new conversation and leaves the old one untouched: another
+account or a member naming the id, a turn of another `kind`, and every direct `/v1/turn` call,
+which has no claim and keeps no conversation.
+
+**A task is claimed only when a worker is free to run it** (agent-ask-orama#43, LSR-075). The
+service runs `AGENT_BUS_WORKERS` turns at once (default 4). While every worker is busy it receives
+nothing more, and a task it cannot run yet stays unclaimed on the bus, where another replica may
+take it; no claimed body or task credential waits in the process. One customer holds at most
+`AGENT_BUS_TENANT_WORKERS` workers (default one fewer than the workers, at least 1), and a freed
+worker goes to the waiting customer holding the fewest, so one tenant's burst cannot take every
+worker from the others. Received task ids waiting for a worker (the dispatch row only: id,
+customer, kind) are capped at 256; any beyond stay on the bus, where lake's recovery loop
+republishes unclaimed tasks.
 
 ## Evals
 
@@ -155,10 +212,11 @@ policy/readout behavior, solution and policy proposals that are never sent, unkn
 as observations, `compare_models` ranking held-out scores, a long list trimmed by its items with
 its exact count and a paged answer's total and cursor, Design → Agents and Train → Agents in the prompt and a
 turn's agent page, the agent-place and agent-page evals run offline, a turn out of tool rounds ending
-unfinished (and published as `failed`), the service's conversation and a trace without the key,
-the eval grader, and the `methodology_draft` turn (three files, lock hashes from the index, the
-manifest and entrypoint checks, one repair round, a failing draft answered with its findings, and
-its trace without the key).
+unfinished (and published as `failed`), the service's conversation with no file written, the
+bounded conversation memory and a failed turn that keeps nothing, the bus taking tasks, the eval
+grader, and the `methodology_draft` turn (three files, lock hashes from the index, the manifest
+and entrypoint checks, one repair round, a failing draft answered with its findings, and no file
+written).
 
 ## Documentation
 
@@ -182,5 +240,6 @@ its trace without the key).
 
 ## Known failures and limits
 
-- Conversations are in memory: restarting the service forgets them.
+- Conversations are in memory: restarting the service, or a turn served by another replica,
+  starts a new one.
 - A delegated agent's answer is reported as it came back; Ask Orama does not re-check it.

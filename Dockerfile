@@ -14,7 +14,6 @@ RUN useradd --uid 10001 --create-home agent
 WORKDIR /home/agent
 COPY --from=build /app/.venv /app/.venv
 ENV PATH=/app/.venv/bin:$PATH \
-    TRACE_DIR=/tmp/agent-ask-orama-traces \
     PORT=8080
 USER 10001
 EXPOSE 8080

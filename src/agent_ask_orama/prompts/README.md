@@ -6,6 +6,21 @@ Each prompt behavior change creates a new version; previous versions remain for 
 - `methodology_draft_v1.md` is the `methodology_draft` turn's own prompt (lake#688,
   `methodology_draft.py`, `DRAFT_PROMPT_VERSION`): the manifest, the fit/predict/score interface
   and the Data object, standard library preferred, pins without hashes (the agent looks them up).
+- `v16.md` is `v15.md` plus the Quickstart: it answers a turn from Lake's Quickstart model step (lake#1182; the turn's `page` has
+  `quickstart_id`, `dataset`, `dataset_path`, `rows`, `columns`, `predictable_columns`,
+  `search_index`): the dataset is known, so it never asks which one; it leads with ideas (a
+  yes-or-no model, a derived target, M-3 clustering, Auto-Suggest opportunities, an analysis, an
+  Application Agent app such as a dashboard), proposes the strongest model as `train_quickstart`
+  so one Confirm starts it, proposes bundles as separate proposals, and offers a generated corpus
+  only when nothing else fits or the person asks. Outside the Quickstart too, "what could I build?"
+  is answered with ideas, never routed to a corpus agent. `agent.py`'s `quickstart_text` adds the
+  same direction to the turn.
+- `v15.md` proposes only what can work (lake#1193, lake#1194): a project a proposal names must
+  exist (read `list_projects` first; lake and the agent both refuse one that does not); a new
+  project's pipeline is one `compile_pipeline` with `create_project: true`; and lake's record of
+  each earlier proposal (`pending`, `confirmed`, `failed`, `withheld`) is the truth, so after a
+  failure "create it then" gets a new, corrected proposal, never a pointer to the failed one
+  (`docs/proposals/`).
 - `v14.md` answers questions about using Lake from Lake's Docs (`list_docs`, then `get_doc`):
   pages, tabs and buttons named exactly as the guide and the navigation show them and linked, and
   only the formats and limits the guide states; "Lake Console" is the product, not a page

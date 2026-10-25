@@ -41,7 +41,7 @@ class FakeLake:
                                                                "message": "taken"}})
             self.claimed.add(arguments["task_id"])
             return 200, json.dumps({"ok": True, "value": {
-                "task_id": arguments["task_id"],
+                "task_id": arguments["task_id"], "customer_id": "c", "workspace_id": "w",
                 "body": {"message": "hi", "lake_token": "lat." + arguments["task_id"] + ".x"}}})
         if capability == "publish_agent_event":
             self.events.append(arguments)
@@ -58,7 +58,9 @@ def test_a_task_is_claimed_run_and_answered_on_the_bus():
     lake = FakeLake([{"task_id": "t1", "customer_id": "c", "kind": "ask"}])
     handed: list[dict[str, Any]] = []
     run(lake, lambda body: handed.append(body) or {"ok": True, "reply": "hello"})
-    assert handed == [{"message": "hi", "lake_token": "lat.t1.x"}], "the body arrives with its credential"
+    assert handed == [{"message": "hi", "lake_token": "lat.t1.x",
+                       "claim": {"task_id": "t1", "customer_id": "c", "workspace_id": "w"}}], \
+        "the body arrives with its credential and the claim reply's task"
     assert [e["type"] for e in lake.events] == ["progress", "result"]
     assert lake.events[-1]["result"] == {"ok": True, "reply": "hello"}
     assert all(e["agent"] == "agent-x" for e in lake.events)
