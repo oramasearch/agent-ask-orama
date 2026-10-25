@@ -830,13 +830,17 @@ def test_a_service_turn_needs_the_persons_key_and_keeps_the_conversation(tmp_pat
     fake = FakeLake()
     body = {"message": "hi", "lake_token": "person-key", "lake_url": "http://lake",
             "conversation_id": "conv-1"}
+    # The conversation is kept by the bus task that continued it, from Lake's claim (#42).
+    claim = {"task_id": "t1", "customer_id": "c-1", "workspace_id": "w-1"}
     first = service.run_turn(body, state, Scripted(message(content="Hello.")),
-                             agent.Lake(turn(), transport=httpx.MockTransport(fake)))
-    second = service.run_turn({**body, "message": "again"}, state,
-                              Scripted(message(content="Hello again.")),
-                              agent.Lake(turn(), transport=httpx.MockTransport(fake)))
+                             agent.Lake(turn(), transport=httpx.MockTransport(fake)), claim)
+    second = service.run_turn({**body, "message": "again", "prior_turn": {"task_id": "t1"}},
+                              state, Scripted(message(content="Hello again.")),
+                              agent.Lake(turn(), transport=httpx.MockTransport(fake)),
+                              {**claim, "task_id": "t2"})
     assert first["ok"] and second["ok"]
-    assert len(state.history("conv-1")) == 5, "system, two people's turns, two replies"
+    assert len(state.conversations[("c-1", "w-1", "t2")]) == 5, \
+        "system, two people's turns, two replies"
     trace = (tmp_path / f"{second['trace_id']}.json").read_text()
     assert "person-key" not in trace
 

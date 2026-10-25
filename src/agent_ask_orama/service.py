@@ -2,7 +2,8 @@
 
 lake calls it for every message in the Ask Orama panel, passing the person's delegated key for the
 turn (`lake_token`), the account, and the page they are on. The same key reaches the model through
-lake's model gateway (`model.py`). Conversations are kept in memory by id.
+lake's model gateway (`model.py`). Conversations are kept in memory under the Lake task that last
+continued them (`State.history`), never by the conversation id a turn names.
 Standard library only.
 """
 
@@ -34,11 +35,46 @@ class State:
         self.lake_url = os.environ.get("LAKE_URL", "")
         self.trace_dir = Path(os.environ.get("TRACE_DIR", "/tmp/agent-ask-orama-traces"))
         self.lock = threading.Lock()
-        self.conversations: dict[str, list[dict[str, Any]]] = {}
+        # (customer_id, workspace_id, task_id) -> the conversation that task last continued.
+        self.conversations: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
 
-    def history(self, conversation_id: str) -> list[dict[str, Any]]:
+    def history(self, claim: object, prior_task_id: str) -> list[dict[str, Any]]:
+        """The conversation a turn continues, now kept under the turn's own task.
+
+        A turn continues only the conversation its prior turn left in the same account and
+        workspace. Both come from Lake: `claim` is the claim reply's task, account and workspace
+        (`lake_bus.turn_body`), and the prior turn is the body's `prior_turn`, which Lake attaches
+        only for the person who asked it. Any other turn, including a direct `/v1/turn` call with
+        no claim, starts a new conversation. The conversation id a turn names is never the key:
+        anyone can name one (agent-ask-orama#42).
+        """
+        owner = claimed_task(claim)
+        if owner is None:
+            return []
+        account, workspace, _ = owner
         with self.lock:
-            return self.conversations.setdefault(conversation_id, [])
+            # Every kept key has a task id, so a turn with no prior turn finds nothing.
+            history = self.conversations.pop((account, workspace, prior_task_id), [])
+            self.conversations[owner] = history
+            return history
+
+
+def claimed_task(claim: object) -> tuple[str, str, str] | None:
+    """`(customer_id, workspace_id, task_id)` from a turn's claim, or None unless all three are
+    non-empty strings."""
+    if not isinstance(claim, dict):
+        return None
+    owner = claim.get("customer_id"), claim.get("workspace_id"), claim.get("task_id")
+    if not all(isinstance(part, str) and part for part in owner):
+        return None
+    return owner
+
+
+def prior_task_id(body: dict[str, Any]) -> str:
+    """The task id of the turn Lake says this one follows (`prior_turn`), or ""."""
+    prior = body.get("prior_turn")
+    task_id = prior.get("task_id") if isinstance(prior, dict) else None
+    return task_id if isinstance(task_id, str) else ""
 
 
 def package_version() -> str:
@@ -56,7 +92,9 @@ def health(state: State) -> dict[str, Any]:
 
 
 def run_turn(body: dict[str, Any], state: State, client: OpenAI | None = None,
-             lake=None) -> dict[str, Any]:
+             lake=None, claim: object = None) -> dict[str, Any]:
+    """One turn. `claim` is what Lake's claim reply said of the task (bus turns only); without
+    it the turn keeps no conversation."""
     message = body.get("message") or ""
     token = body.get("lake_token") or ""
     lake_url = body.get("lake_url") or state.lake_url
@@ -73,7 +111,8 @@ def run_turn(body: dict[str, Any], state: State, client: OpenAI | None = None,
     # The model is reached through lake with the turn's own key, which counts its tokens in the
     # turn's workspace (lake#248); this agent holds no provider key.
     model = client or gateway_client(lake_url, token)
-    answer = answer_turn(turn, state.history(conversation), model, state.model, lake)
+    answer = answer_turn(turn, state.history(claim, prior_task_id(body)), model, state.model,
+                         lake)
     trace_id = str(uuid.uuid4())
     state.trace_dir.mkdir(parents=True, exist_ok=True)
     (state.trace_dir / f"{trace_id}.json").write_text(json.dumps(
@@ -165,6 +204,8 @@ def serve() -> int:
     port = int(os.environ.get("PORT", "8080"))
     print(json.dumps({"agent": "agent-ask-orama", "listening": port}), flush=True)
     # Turns arrive as tasks on lake's agent bus (lake#269); /v1/turn stays for direct calls.
-    lake_bus.start_from_env(lambda body: run_turn(body, state), "agent-ask-orama")
+    # Only a claimed task carries a claim; a direct /v1/turn never does (agent-ask-orama#42).
+    lake_bus.start_from_env(lambda body: run_turn(body, state, claim=body.get("claim")),
+                            "agent-ask-orama")
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
     return 0
