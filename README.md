@@ -40,6 +40,11 @@ and calls this service for every message.
   guide `list_docs` and `get_doc` find, naming each page as the navigation shows it, linked, and
   only the formats it states (prompt v14, [lake#817](https://github.com/oramasearch/lake/issues/817),
   [`docs/how-to/`](docs/how-to/README.md)).
+- **The Quickstart's model step starts from the dataset.** A turn whose `page` has `quickstart_id`
+  names the dataset just added; Ask Orama never asks which one, leads with ideas (a yes-or-no model,
+  a derived target, clustering, opportunities, an analysis, a dashboard app), proposes the strongest
+  model as `train_quickstart`, and offers a corpus only when nothing else fits (prompt v16,
+  [lake#1182](https://github.com/oramasearch/lake/issues/1182), [`docs/quickstart/`](docs/quickstart/README.md)).
 - **Its vocabulary is derived.** The capabilities it may name come from lake's `/v1/openapi.json`
   at every turn, less the ceremonies a person performs (signing in, recovering, minting
   credentials, reading secrets in the clear), named one by one in `EXCLUDED_CAPABILITIES`

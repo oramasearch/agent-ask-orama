@@ -508,7 +508,7 @@ def test_apps_are_listed_from_lake():
         message(tool_calls=[call("lake_read", capability="list_apps")]),
         message(content="You have one App, risk-console, and it is running."))
     answer = run(client, fake, message="What Apps do I have?")
-    assert "prompt v15" in client.seen[0][0]["content"]
+    assert "prompt v16" in client.seen[0][0]["content"]
     assert answer.reads == [{
         "capability": "list_apps",
         "input": {"customer_id": "c-1"},
@@ -1043,7 +1043,7 @@ def test_a_runnable_methodology_can_be_proposed_after_reading_the_registry():
             impact="Recompiles segments as an M-3 Pipeline")]),
         message(content="I proposed the runnable M-3 segmentation Pipeline."))
     answer = run(client, fake, message="Can you segment my customers?")
-    assert "prompt v15" in client.seen[0][0]["content"]
+    assert "prompt v16" in client.seen[0][0]["content"]
     assert answer.proposals == [{
         "capability": "workspace_act",
         "input": {
@@ -1106,7 +1106,7 @@ def test_a_runnable_solution_is_read_from_the_registry_and_proposed():
             impact="Builds the S-1 level 1 Pipeline in retention")]),
         message(content="I proposed the S-1 level 1 Pipeline for your confirmation."))
     answer = run(client, fake, message="Build S-1 level 1 in retention from customers.")
-    assert "prompt v15" in client.seen[0][0]["content"]
+    assert "prompt v16" in client.seen[0][0]["content"]
     detail = client.seen[2][-1]["content"]
     assert "Customer retention" in detail
     assert "minimum_level" in detail
@@ -1743,7 +1743,7 @@ def test_the_prompt_names_design_agents_and_train_agents():
     import agent_ask_orama
     prompt = (Path(agent_ask_orama.__file__).parent / "prompts"
               / f"{agent.PROMPT_VERSION}.md").read_text()
-    assert agent.PROMPT_VERSION == "v15"
+    assert agent.PROMPT_VERSION == "v16"
     assert "Design (projects,\nPipelines, solutions, agents)" in prompt
     assert "Train (agents to train, runs, experiments, models)" in prompt
     assert "Train (agents, data, runs)" not in prompt
@@ -2048,3 +2048,66 @@ def test_after_a_failed_confirm_create_it_then_gets_a_new_valid_proposal(tmp_pat
         "impact": "Creates the project and its clustering pipeline",
     }]
     assert second["reply"] == "Here is the corrected change; confirm it below."
+
+
+# lake#1182: the Quickstart's model step is an Ask Orama conversation about the dataset just added.
+QUICKSTART_PAGE = {"path": "/", "quickstart": "model step: decide what to build on the dataset just added",
+                   "quickstart_id": "qs-1", "dataset": "films", "dataset_id": "datasets/films",
+                   "dataset_path": "datasets.films", "rows": "40",
+                   "columns": "title: identifier; rating: number; genre: category, 5 values (can be predicted)",
+                   "predictable_columns": "genre", "search_index": "index-1"}
+
+
+def test_a_quickstart_turn_names_the_dataset_and_never_asks_which_one():
+    said = agent.quickstart_text(QUICKSTART_PAGE)
+    assert "films (datasets.films, 40 rows)" in said
+    assert "never ask which one" in said
+    assert "train_quickstart" in said and "M-3" in said
+    assert "corpus only" in said
+    assert agent.quickstart_text({"path": "/ship/apps"}) == ""
+    client = Scripted(message(content="Here is what you could build with films."))
+    run(client, FakeLake(), message="What could I build with it?", page=QUICKSTART_PAGE)
+    asked = client.seen[0][-1]["content"]
+    assert asked.startswith("What could I build with it?")
+    assert '"quickstart_id": "qs-1"' in asked and "the Quickstart's model step" in asked
+
+
+def test_the_prompt_leads_a_quickstart_with_ideas_not_a_corpus():
+    from pathlib import Path
+
+    import agent_ask_orama
+    prompt = (Path(agent_ask_orama.__file__).parent / "prompts"
+              / f"{agent.PROMPT_VERSION}.md").read_text()
+    assert "## What to build with a dataset (the Quickstart)" in prompt
+    for rule in ("**The dataset is known. Never ask which dataset",
+                 "**Lead with ideas, the most interesting first**",
+                 "derived_target: {column, above | at_least | below |", "methodology: \"M-3\"",
+                 "Delegate to `agent-autosuggest`", "Delegate to `agent-application` (kind app)",
+                 "Never route \"what could I build?\" to `agent-autosuggest-corpus`",
+                 "**A bundle is several proposals.**",
+                 "**In the Quickstart a model is always `train_quickstart`**",
+                 "**A corpus agent trains Orama's own agents, not the person's project.**"):
+        assert rule in prompt, rule
+
+
+def test_a_quickstart_clustering_proposal_runs_train_quickstart_after_the_registry_read():
+    openapi = {"paths": {**NAMED_OPENAPI["paths"],
+                         "/v1/train_quickstart": named_action("quickstart_id", "methodology",
+                                                              "target", "entity_column")}}
+    proposal = {"quickstart_id": "qs-1", "methodology": "M-3"}
+    # Without this turn's registry read the methodology is refused, as for any proposal.
+    refused = Scripted(message(tool_calls=[call("lake_propose", capability="train_quickstart",
+                                                input=proposal, impact="groups the films")]),
+                       message(content="ok"))
+    answer = run(refused, FakeLake(openapi=openapi), page=QUICKSTART_PAGE)
+    assert answer.proposals == []
+    # After it, M-3 is runnable and the proposal is recorded for the person to confirm.
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="list_methodologies", input={})]),
+        message(tool_calls=[call("lake_propose", capability="train_quickstart", input=proposal,
+                                 impact="groups the films into segments")]),
+        message(content="I proposed a clustering model."))
+    answer = run(client, FakeLake(openapi=openapi), page=QUICKSTART_PAGE)
+    assert [p["capability"] for p in answer.proposals] == ["train_quickstart"]
+    assert answer.proposals[0]["input"]["methodology"] == "M-3"
+    assert answer.proposals[0]["input"]["quickstart_id"] == "qs-1"
