@@ -840,6 +840,7 @@ def answer_turn(turn: Turn, history: list[dict[str, Any]], client: OpenAI, model
     answer = Answer()
     methodologies = MethodologyCatalog()
     solutions = SolutionCatalog()
+    kept = len(history)  # a turn that raises leaves the conversation as it found it (#44)
     try:
         index = capability_index(lake.openapi())
         connected = connected_tools(lake, turn)
@@ -877,6 +878,9 @@ def answer_turn(turn: Turn, history: list[dict[str, Any]], client: OpenAI, model
         answer.incomplete = True
         answer.reply = partial_answer(client, model, history)
         return answer
+    except BaseException:
+        del history[kept:]
+        raise
     finally:
         if owned:
             lake.close()

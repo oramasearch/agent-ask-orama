@@ -77,6 +77,16 @@ right bearer runs the turn; a missing, empty, truncated, extended or scheme-less
 without running it; an unset `AGENT_SERVICE_TOKEN` refuses every turn with `503`; the comparison
 goes through `hmac.compare_digest`; and a non-ASCII bearer is refused, not an error.
 
+`test_conversations.py` (agent-ask-orama#44, LSR-076) covers the bounded conversation memory: the
+oldest whole turns go first and the system message stays, a conversation is cut to its byte budget
+without parting a tool call from its answer, a single turn over budget leaves only the system
+message, the least recently used conversation goes past the count and past the total bytes, growth
+after a conversation was handed out is counted, an idle conversation expires, `setdefault` and
+moving a conversation to a new key work as on a dict, and the limits come from the environment.
+Through the service: 40 conversations keep 5 with the limit at 5, a long conversation keeps its
+last 3 turns, a turn that fails leaves nothing in the conversation, and a turn writes no file and
+logs its trace id without what was said.
+
 Run all tests with `uv run pytest`.
 
 `test_methodology_draft.py` covers the `methodology_draft` turn (lake#688) with a scripted model
@@ -84,7 +94,8 @@ and a fake package index: the three files with `interface`, `entrypoint` and `pa
 agent and an empty lock for the standard library; every wheel's hash from the index for a pinned
 package (`pypi_wheel_hashes` against an `httpx` MockTransport, a missing version named); the
 manifest checks as Lake reads them; one repair round with the failing findings, then `ok: false`
-with them; and the service routing the turn kind and tracing it without the key.
+with them; and the service routing the turn kind, writing nothing to disk and logging its trace id
+without the key or what was asked.
 
 `test_turn_destinations.py` (agent-ask-orama#39) checks that a turn's credential goes only to Lake
 at the service's own `LAKE_URL`: a turn's `lake_url` (another host, scheme or port) is ignored and
