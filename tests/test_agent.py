@@ -508,7 +508,7 @@ def test_apps_are_listed_from_lake():
         message(tool_calls=[call("lake_read", capability="list_apps")]),
         message(content="You have one App, risk-console, and it is running."))
     answer = run(client, fake, message="What Apps do I have?")
-    assert "prompt v16" in client.seen[0][0]["content"]
+    assert "prompt v17" in client.seen[0][0]["content"]
     assert answer.reads == [{
         "capability": "list_apps",
         "input": {"customer_id": "c-1"},
@@ -1048,7 +1048,7 @@ def test_a_runnable_methodology_can_be_proposed_after_reading_the_registry():
             impact="Recompiles segments as an M-3 Pipeline")]),
         message(content="I proposed the runnable M-3 segmentation Pipeline."))
     answer = run(client, fake, message="Can you segment my customers?")
-    assert "prompt v16" in client.seen[0][0]["content"]
+    assert "prompt v17" in client.seen[0][0]["content"]
     assert answer.proposals == [{
         "capability": "workspace_act",
         "input": {
@@ -1111,7 +1111,7 @@ def test_a_runnable_solution_is_read_from_the_registry_and_proposed():
             impact="Builds the S-1 level 1 Pipeline in retention")]),
         message(content="I proposed the S-1 level 1 Pipeline for your confirmation."))
     answer = run(client, fake, message="Build S-1 level 1 in retention from customers.")
-    assert "prompt v16" in client.seen[0][0]["content"]
+    assert "prompt v17" in client.seen[0][0]["content"]
     detail = client.seen[2][-1]["content"]
     assert "Customer retention" in detail
     assert "minimum_level" in detail
@@ -1750,7 +1750,7 @@ def test_the_prompt_names_design_agents_and_train_agents():
     import agent_ask_orama
     prompt = (Path(agent_ask_orama.__file__).parent / "prompts"
               / f"{agent.PROMPT_VERSION}.md").read_text()
-    assert agent.PROMPT_VERSION == "v16"
+    assert agent.PROMPT_VERSION == "v17"
     assert "Design (projects,\nPipelines, solutions, agents)" in prompt
     assert "Train (agents to train, runs, experiments, models)" in prompt
     assert "Train (agents, data, runs)" not in prompt
@@ -2119,3 +2119,80 @@ def test_a_quickstart_clustering_proposal_runs_train_quickstart_after_the_regist
     assert [p["capability"] for p in answer.proposals] == ["train_quickstart"]
     assert answer.proposals[0]["input"]["methodology"] == "M-3"
     assert answer.proposals[0]["input"]["quickstart_id"] == "qs-1"
+
+
+# lake#1204: Lake's page says where the Quickstart is, and Ask Orama follows it after a confirm.
+TRAINING_PAGE = {**QUICKSTART_PAGE, "quickstart": "model step: training", "quickstart_state": "training",
+                 "model": "a clustering model (M-3) that groups the rows into segments, training since "
+                          "2026-10-25T21:20:26Z",
+                 "quickstart_next": "Wait for training to finish (quickstart_status follows it)."}
+FAILED_PAGE = {**QUICKSTART_PAGE, "quickstart": "model step: training failed", "quickstart_state": "failed",
+               "model": "a clustering model (M-3) that groups the rows into segments",
+               "model_problem": "Clustering needs at least 2 rows, and the dataset has fewer."}
+
+
+def test_a_quickstart_turn_follows_the_training_and_the_failure():
+    training = agent.quickstart_text(TRAINING_PAGE)
+    assert "while a clustering model (M-3)" in training
+    assert "read quickstart_status with this quickstart_id" in training
+    assert "Never answer \"Done\"" in training
+    failed = agent.quickstart_text(FAILED_PAGE)
+    assert "failed to train (Clustering needs at least 2 rows" in failed
+    assert "propose the corrected change as a train_quickstart card" in failed
+    assert "Never tell the person to configure" in failed
+    done = agent.quickstart_text({**QUICKSTART_PAGE, "quickstart_state": "done", "model": "a model, trained",
+                                  "quickstart_next": "See the segments in Train → Models."})
+    assert "See the segments in Train → Models." in done
+    assert "never ask which one" in agent.quickstart_text(QUICKSTART_PAGE), "deciding, as before"
+
+
+def test_the_prompt_follows_the_quickstart_after_a_confirm():
+    from pathlib import Path
+
+    import agent_ask_orama
+    prompt = (Path(agent_ask_orama.__file__).parent / "prompts"
+              / f"{agent.PROMPT_VERSION}.md").read_text()
+    assert agent.PROMPT_VERSION == "v17"
+    assert "### Following the Quickstart after a confirm" in prompt
+    for rule in ("**After a confirm, say what started and what comes next**",
+                 "Never answer \"Done: train_quickstart\"",
+                 "**Asked about progress**", "read\n  `quickstart_status`",
+                 "**propose the corrected change as a `train_quickstart` card**",
+                 "**Never tell the person to \"configure\" anything internal**"):
+        assert rule in prompt, rule
+
+
+class QuickstartLake(FakeLake):
+    """A Lake whose quickstart_status answers a failed clustering, as lake#1203 left it."""
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if request.url.path == "/v1/quickstart_status":
+            return httpx.Response(200, json={"ok": True, "value": {
+                "quickstart_id": "qs-1", "state": "failed",
+                "steps": [{"step": "model", "state": "failed", "error": {
+                    "code": "cannot_prepare",
+                    "message": "Clustering needs at least 2 rows, and the dataset has fewer."}}]}})
+        self.requests.pop()
+        return super().__call__(request)
+
+
+def test_after_a_failure_it_reads_the_status_and_proposes_the_corrected_change():
+    openapi = {"paths": {**NAMED_OPENAPI["paths"],
+                         "/v1/quickstart_status": named_read(),
+                         "/v1/train_quickstart": named_action("quickstart_id", "methodology", "target",
+                                                              "entity_column")}}
+    corrected = {"quickstart_id": "qs-1", "target": "genre", "target_value": "scifi"}
+    client = Scripted(
+        message(tool_calls=[call("lake_read", capability="quickstart_status", input={"quickstart_id": "qs-1"})]),
+        message(tool_calls=[call("lake_propose", capability="train_quickstart", input=corrected,
+                                 impact="trains a model that predicts whether a film is scifi")]),
+        message(content="Clustering needs at least 2 rows. Here is a model you can train instead; "
+                        "confirm it below."))
+    fake = QuickstartLake(openapi=openapi)
+    answer = run(client, fake, message="is it finished training?", page=FAILED_PAGE)
+    assert any(r.url.path == "/v1/quickstart_status" for r in fake.requests)
+    assert [p["capability"] for p in answer.proposals] == ["train_quickstart"]
+    assert answer.proposals[0]["input"]["quickstart_id"] == "qs-1"
+    asked = client.seen[0][-1]["content"]
+    assert "failed to train (Clustering needs at least 2 rows" in asked

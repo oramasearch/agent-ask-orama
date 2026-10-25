@@ -26,7 +26,8 @@
   path, linked, and only the formats a guide states (prompt v14, lake#817).
 - [`quickstart/`](quickstart/) — the Quickstart's model step (lake#1182): the dataset named by the
   page, ideas first, the strongest model proposed as `train_quickstart`, a corpus only when nothing
-  else fits (prompt v16).
+  else fits (prompt v16); after a confirm, what started and what comes next, progress from
+  `quickstart_status`, and a corrected proposal after a failure (prompt v17, lake#1204).
 - [`mcp/`](mcp/) — the workspace's connected MCP tools, read as data, changes proposed (lake#652).
 - [`proposals/`](proposals/) — a proposal names only a project that exists, a new project is one
   `compile_pipeline` with `create_project`, and Lake's record of each earlier proposal decides the
