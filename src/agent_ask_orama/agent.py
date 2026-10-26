@@ -23,7 +23,7 @@ from typing import Any
 import httpx
 from openai import OpenAI
 
-PROMPT_VERSION = "v16"
+PROMPT_VERSION = "v17"
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_ROUNDS = 10
 OLD_ENGINE_ISSUE = "zetta#1061"
@@ -740,13 +740,33 @@ def agent_page_work(page: dict[str, Any]) -> str:
 
 def quickstart_text(page: dict[str, Any]) -> str:
     """What a turn from the Quickstart's model step is about (lake#1182): the dataset the person
-    just added, named by the page, and what to answer with. Empty for any other page."""
+    just added, named by the page, and what to answer with. Lake's page also says where the
+    Quickstart is (lake#1204, `quickstart_state`): while a model trains, follow it; after a failure,
+    propose the corrected change; once done, say what to do now. Empty for any other page."""
     if not (page or {}).get("quickstart_id"):
         return ""
     dataset = str(page.get("dataset") or "the dataset")
     path = str(page.get("dataset_path") or "")
     rows = str(page.get("rows") or "")
     sized = f"{dataset} ({path}{', ' + rows + ' rows' if rows else ''})" if path else dataset
+    state = str(page.get("quickstart_state") or "deciding")
+    model = str(page.get("model") or "the model")
+    if state == "training":
+        # lake#1204: after a confirm, follow the Quickstart rather than start it again.
+        return (f": the Quickstart's model step, about {sized}, while {model}. Say what started "
+                "and what comes next; asked about progress, read quickstart_status with this "
+                "quickstart_id in this turn and answer from it. Never answer \"Done\" with a "
+                "capability's name")
+    if state == "failed":
+        problem = str(page.get("model_problem") or "")
+        said = f" ({problem})" if problem else ""
+        return (f": the Quickstart's model step, about {sized}, where {model} failed to "
+                f"train{said}. Say why in the person's words and propose the corrected change as "
+                "a train_quickstart card with this quickstart_id. Never tell the person to "
+                "configure an internal setting (graph hints, a K range, a holdout)")
+    if state in ("trained", "done"):
+        return (f": the Quickstart, about {sized}, where {model}. Say what they can do now: "
+                f"{page.get('quickstart_next') or 'read quickstart_status for the next step'}")
     return (f": the Quickstart's model step, about the dataset just added, {sized}. The dataset "
             "is known: never ask which one. Answer with what is worth building on it, ideas "
             "first (a model with train_quickstart, a derived target, clustering with M-3, "

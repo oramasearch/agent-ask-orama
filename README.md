@@ -5,7 +5,7 @@
 **Agent Library**. lake shows it as a panel on every page ([lake#236](https://github.com/oramasearch/lake/issues/236))
 and calls this service for every message.
 
-**Current release: [v0.2.0](docs/releases/v0.2.0.md)** (2026-10-25, prompt v16).
+**Current release: [v0.2.1](docs/releases/v0.2.1.md)** (2026-10-25, prompt v17).
 
 ## What it does
 
@@ -45,6 +45,10 @@ and calls this service for every message.
   a derived target, clustering, opportunities, an analysis, a dashboard app), proposes the strongest
   model as `train_quickstart`, and offers a corpus only when nothing else fits (prompt v16,
   [lake#1182](https://github.com/oramasearch/lake/issues/1182), [`docs/quickstart/`](docs/quickstart/README.md)).
+- **It follows the Quickstart after a confirm.** Lake's page says where the Quickstart is; Ask
+  Orama says what started and what comes next, reads `quickstart_status` when asked about progress,
+  and after a failure proposes the corrected change as a card, never telling the person to
+  configure an internal setting (prompt v17, [lake#1204](https://github.com/oramasearch/lake/issues/1204)).
 - **Its vocabulary is derived.** The capabilities it may name come from lake's `/v1/openapi.json`
   at every turn, less the ceremonies a person performs (signing in, recovering, minting
   credentials, reading secrets in the clear), named one by one in `EXCLUDED_CAPABILITIES`

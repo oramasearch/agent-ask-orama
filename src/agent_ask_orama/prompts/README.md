@@ -6,6 +6,13 @@ Each prompt behavior change creates a new version; previous versions remain for 
 - `methodology_draft_v1.md` is the `methodology_draft` turn's own prompt (lake#688,
   `methodology_draft.py`, `DRAFT_PROMPT_VERSION`): the manifest, the fit/predict/score interface
   and the Data object, standard library preferred, pins without hashes (the agent looks them up).
+- `v17.md` is `v16.md` plus following the Quickstart after a confirm (lake#1204): Lake's page now
+  says where the Quickstart is (`quickstart_state`: deciding, training, failed, trained or done;
+  `model`, `model_problem`, `quickstart_next`). After a confirm it says what started and what comes
+  next, never "Done: train_quickstart"; asked about progress it reads `quickstart_status` in the
+  turn; after a failure it says why in the person's words and proposes the corrected change as a
+  `train_quickstart` card; it never tells the person to "configure" an internal setting (graph
+  hints, a K range, a holdout). `agent.py`'s `quickstart_text` gives each state its own direction.
 - `v16.md` is `v15.md` plus the Quickstart: it answers a turn from Lake's Quickstart model step (lake#1182; the turn's `page` has
   `quickstart_id`, `dataset`, `dataset_path`, `rows`, `columns`, `predictable_columns`,
   `search_index`): the dataset is known, so it never asks which one; it leads with ideas (a
