@@ -1,6 +1,6 @@
 [project]
 name = "agent-ask-orama"
-version = "0.2.0"
+version = "0.2.1"
 description = "Ask Orama: the general agent for all of lake, delegating to any agent"
 readme = "README.md"
 authors = [
