@@ -15,6 +15,7 @@ name one that does not exist, and lake refuses anything the person may not do.
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -320,8 +321,16 @@ class SolutionCatalog:
 
 
 def issue_url(issue: str) -> str:
-    if issue.startswith("zetta#") and issue.removeprefix("zetta#").isdigit():
-        return "https://github.com/oramasearch/zetta/issues/" + issue.removeprefix("zetta#")
+    """The link for an engine issue reference such as `zetta#123`, or "" when none is configured.
+
+    `ZETTA_ISSUE_URL` is a template with `{n}` for the number (for example
+    `https://github.com/<owner>/zetta/issues/{n}`). Unset, the reference is named without a link,
+    so an install never points people at a tracker it was not told about.
+    """
+    template = os.environ.get("ZETTA_ISSUE_URL", "").strip()
+    number = issue.removeprefix("zetta#")
+    if template and "{n}" in template and issue.startswith("zetta#") and number.isdigit():
+        return template.replace("{n}", number)
     return ""
 
 

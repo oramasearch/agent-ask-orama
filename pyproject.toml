@@ -4,7 +4,7 @@ version = "0.2.1"
 description = "Ask Orama: the general agent for all of lake, delegating to any agent"
 readme = "README.md"
 authors = [
-    { name = "Steve Sperandeo", email = "steve.sperandeo@gmail.com" }
+    { name = "Orama Search Inc." }
 ]
 requires-python = ">=3.12"
 dependencies = [

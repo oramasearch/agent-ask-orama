@@ -1,4 +1,4 @@
-"""agent-ask-orama#44 (LSR-076): nothing the shared service keeps grows without limit.
+"""agent-ask-orama#44: nothing the shared service keeps grows without limit.
 
 Conversations used to live in a dict that only grew, a turn that failed kept the person's message,
 and every turn wrote a trace file to the pod's disk.

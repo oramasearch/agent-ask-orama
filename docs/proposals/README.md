@@ -3,8 +3,7 @@
 Ask Orama never changes anything itself: a change is a proposal the person confirms in Lake. Two
 defects on lake-dev (2026-10-25) showed a proposal could look valid and never work, and that after
 a failed confirm the conversation could not move on. Prompt `v15` and the agent's own checks fix
-both ([lake#1193](https://github.com/oramasearch/lake/issues/1193),
-[lake#1194](https://github.com/oramasearch/lake/issues/1194)).
+both.
 
 ## What happened
 

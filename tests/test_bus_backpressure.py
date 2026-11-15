@@ -1,4 +1,4 @@
-"""agent-ask-orama#43 (LSR-075): a task is claimed only when a worker is free to run it.
+"""agent-ask-orama#43: a task is claimed only when a worker is free to run it.
 
 The bus worker used to claim every task it received and queue it on the executor, so a burst from
 one tenant sat in this process's memory (bodies and task credentials included) behind four busy
