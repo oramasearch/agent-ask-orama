@@ -1406,8 +1406,8 @@ def test_a_turn_calls_its_model_through_lakes_gateway_with_the_turns_key(tmp_pat
         return httpx.Response(200, json=openai_answer("Hello."))
 
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setattr(service, "gateway_client", lambda url, token: model.gateway_client(
-        url, token, http_client=httpx.Client(transport=httpx.MockTransport(gateway))))
+    monkeypatch.setattr(service, "gateway_client", lambda url, token, **kw: model.gateway_client(
+        url, token, http_client=httpx.Client(transport=httpx.MockTransport(gateway)), **kw))
     state = service.State()
     state.trace_dir = tmp_path
     state.lake_url = "http://lake:8080/"
