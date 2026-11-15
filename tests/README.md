@@ -46,6 +46,12 @@ names (ApplicationAgent, ExperimentsAgent, Corpus Generator).
 the claim reply's task, account and workspace as `claim`, and publishes an unfinished turn as
 `failed` with its partial answer.
 
+`test_by_reference.py` (lake#871) claims by reference: the claim asks `credentials: by_reference`,
+the turn gets the bus credential and `X-Lake-Agent-Task`, every Lake read and model call of the turn
+sends both, and no bus call sends the header. Against a Lake from before lake#871, which refuses the
+field, the claim is asked again without it and the body's own credential is used with no task
+header; any other refusal is not retried.
+
 `test_conversation_owner.py` (agent-ask-orama#42) runs bus turns that share one `conversation_id`:
 the owner's next turn, with Lake's `prior_turn`, continues the conversation; another account, even
 naming the owner's task as its prior turn, and a member of the same workspace with another `kind`

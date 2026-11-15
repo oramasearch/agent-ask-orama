@@ -139,16 +139,17 @@ def run_turn(body: dict[str, Any], state: State, client: OpenAI | None = None,
         return {"ok": False, "error": "LAKE_URL is not set: this agent sends a turn's credential "
                                       "only to Lake's configured address"}
     conversation = body.get("conversation_id") or str(uuid.uuid4())
+    headers = lake_bus.task_headers(body)
     if body.get("kind") == "methodology_draft":
         return run_methodology_draft(body, state, conversation, token, lake_url, client)
-    turn = Turn(message=message, lake_url=lake_url, lake_token=token,
+    turn = Turn(message=message, lake_url=lake_url, lake_token=token, lake_headers=headers,
                 customer_id=body.get("customer_id") or "", page=body.get("page") or {},
                 conversation_id=conversation,
                 # What became of the conversation's earlier proposals (lake#1194).
                 proposal_states=proposal_states(body.get("context")))
     # The model is reached through lake with the turn's own key, which counts its tokens in the
     # turn's workspace (lake#248); this agent holds no provider key.
-    model = client or gateway_client(lake_url, token)
+    model = client or gateway_client(lake_url, token, headers=headers)
     answer = answer_turn(turn, state.history(claim, prior_task_id(body)), model, state.model,
                          lake)
     trace_id = trace(conversation, "api", rounds=answer.rounds, incomplete=answer.incomplete)
@@ -164,7 +165,7 @@ def run_methodology_draft(body: dict[str, Any], state: State, conversation: str,
                           lake_url: str, client: OpenAI | None = None) -> dict[str, Any]:
     """Lake's New Methodology drawer asks for a first draft (lake#688): the three files of a
     methodology, checked, for the person to review. Nothing is written."""
-    model = client or gateway_client(lake_url, token)
+    model = client or gateway_client(lake_url, token, headers=lake_bus.task_headers(body))
     answer = methodology_draft_turn(body, model, state.model)
     trace_id = trace(conversation, "methodology_draft", rounds=answer.get("rounds"),
                      ok=bool(answer.get("ok")))

@@ -24,7 +24,7 @@ def sent(monkeypatch):
 
     models: list[str] = []
 
-    def gateway(url, token):
+    def gateway(url, token, **kwargs):
         models.append(url)
         return Scripted(message(content="Hello."))
 

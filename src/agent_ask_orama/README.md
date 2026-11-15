@@ -12,7 +12,7 @@ cases, registry-graded methodology and solution questions, a measured solution r
 a search index and an agent), and agent-place and agent-page cases (`run_case` sends each case from its page).
 `methodology_draft.py` answers lake's `methodology_draft` turns (lake#688): the three files of a
 workspace methodology, the lock's hashes looked up in the package index, checked before they are
-offered. `service.py` exposes the turn API and routes that turn kind there, while `lake_bus.py` receives delegated turns from lake.
+offered. `service.py` exposes the turn API and routes that turn kind there, while `lake_bus.py` receives delegated turns from lake, claiming each by reference (lake#871: the turn calls Lake with the bus credential and `X-Lake-Agent-Task`, and falls back to the body's credential on a Lake that refuses it).
 `conversations.py` is the service's conversation memory, bounded by count, turns, bytes and idle
 time (agent-ask-orama#44).
 

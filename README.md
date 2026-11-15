@@ -142,9 +142,18 @@ http(s) URL without user info, every turn is refused before a request is made.
 
 **Turns arrive on lake's agent bus** (lake `docs/api/agent-bus.md`). `lake_bus.py` long-polls
 `receive_agent_tasks` through lake with this agent's own bus credential (`AGENT_BUS_TOKEN`). It
-claims each task, whose body carries the task's credential as `lake_token`, runs it as
-`/v1/turn` would (with the claim reply's task, account and workspace as `claim`), and publishes
-`progress`, then the answer or `failed`. It starts when the operator sets `LAKE_URL`, `AGENT_BUS_TOKEN` and `AGENT_BUS_AGENT`.
+claims each task, runs it as `/v1/turn` would (with the claim reply's task, account and workspace
+as `claim`), and publishes `progress`, then the answer or `failed`. It starts when the operator sets `LAKE_URL`, `AGENT_BUS_TOKEN` and `AGENT_BUS_AGENT`.
+
+**No task credential reaches this process** (lake#871). Each claim asks for `credentials:
+by_reference`: Lake keeps the task's credential and answers the body without it. Every call the
+turn makes to Lake (its reads, its delegations and its model calls through the gateway) then
+carries this agent's bus credential and the header `X-Lake-Agent-Task: <task id>`, which Lake
+honours only while that task is claimed and `Running` on this agent. The bus calls themselves never
+send the header. A Lake from before lake#871 refuses the `credentials` field before claiming
+anything; the claim is then asked again without it, and the body's own `lake_token` is used as
+before, with no task header. Lake removes the in-body mode once every library agent claims by
+reference.
 
 **A conversation is continued only by its own turns** (#42). The memory is kept under the bus task
 that last continued it, with the account and workspace from Lake's claim reply, never under the
