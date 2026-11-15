@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """The release this tree is: its version, read from the code, has notes in docs/releases/."""
 
 from __future__ import annotations

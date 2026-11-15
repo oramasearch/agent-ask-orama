@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """agent-ask-orama#44: nothing the shared service keeps grows without limit.
 
 Conversations used to live in a dict that only grew, a turn that failed kept the person's message,

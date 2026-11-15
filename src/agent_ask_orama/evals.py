@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Ask Orama's evals: generated from lake's own capability index, graded by rules, run live.
 
 Generated, never hand-written: the cases come from the

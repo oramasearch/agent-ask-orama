@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Ask Orama without a network: lake is an httpx MockTransport, the model a scripted client.
 The live eval set (evals/) runs against a real lake."""
 

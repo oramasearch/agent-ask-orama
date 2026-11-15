@@ -1,4 +1,6 @@
 # syntax=docker/dockerfile:1
+# SPDX-License-Identifier: MIT
+
 # Ask Orama (zetta#1018): the general agent for all of lake. Private on
 # Docker Hub as oramasearch/agent-ask-orama. One service per lake; the operator runs it and lake calls it
 # for every message in the Ask Orama panel.

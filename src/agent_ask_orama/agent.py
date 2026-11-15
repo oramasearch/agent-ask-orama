@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Ask Orama: the general agent for all of lake (lake#228, zetta#1018).
 
 It works as the signed-in person and never more: every call carries the key lake delegates to it

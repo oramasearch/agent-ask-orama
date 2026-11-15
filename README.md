@@ -246,3 +246,9 @@ written).
 - Conversations are in memory: restarting the service, or a turn served by another replica,
   starts a new one.
 - A delegated agent's answer is reported as it came back; Ask Orama does not re-check it.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Third-party components and their licenses are in
+[THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES). Contributions are welcome under the Developer
+Certificate of Origin; see [CONTRIBUTING.md](CONTRIBUTING.md).
