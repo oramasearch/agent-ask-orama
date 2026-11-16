@@ -3,16 +3,16 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "agent-ask-orama-v0.3.0",
-  "documentNamespace": "https://github.com/oramasearch/agent-ask-orama/sbom/d1045bcfe32b14d6f5394f8b41759cd1aaff3782",
+  "documentNamespace": "https://github.com/oramasearch/agent-ask-orama/sbom/feb06df7f1fd4225ca2d484ca861adb41724a433",
   "creationInfo": {
-    "created": "2026-11-16T07:24:19Z",
+    "created": "2026-11-16T07:26:06Z",
     "creators": [
       "Organization: OramaSearch, Inc.",
       "Tool: tools/sbom.py",
       "Tool: syft"
     ],
     "licenseListVersion": "3.29",
-    "comment": "Made from source commit d1045bcfe32b14d6f5394f8b41759cd1aaff3782 by tools/sbom.py."
+    "comment": "Made from source commit feb06df7f1fd4225ca2d484ca861adb41724a433 by tools/sbom.py."
   },
   "documentDescribes": [
     "SPDXRef-DocumentRoot"
