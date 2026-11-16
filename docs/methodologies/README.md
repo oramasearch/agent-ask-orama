@@ -12,7 +12,7 @@ nothing, prompt v5 starts the turn with:
 }
 ```
 
-Since prompt v11 the call is lake's named `list_methodologies` (lake#650), or the same call
+Since prompt v11 the call is lake's named `list_methodologies`, or the same call
 through the read-only `workspace_query` on an older lake; the registry is recorded from either.
 The result supplies each methodology's identifier, name, family, model kinds, solutions, required inputs, outputs, metrics, `runnable`,
 `partial` and tracking `issue`. Ask Orama answers support questions from those fields and converts a
@@ -58,7 +58,7 @@ entry with its issue, and an old engine's `unknown_capability` response. The liv
 fixed questions for customer segmentation and speech analytics and grades the answers against the
 registry it reads at run time.
 
-## Drafting a workspace methodology (lake#688)
+## Drafting a workspace methodology
 
 Lake's Design → Methodologies → New methodology drawer has an **Ask Orama** button. It sends Ask
 Orama a `methodology_draft` turn through `agent_turn` (lake's agent bus, like every library-agent

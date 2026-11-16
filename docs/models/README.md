@@ -1,20 +1,20 @@
 # Models and Unfinished Turns
 
 What Ask Orama does when a person asks which of their models is best, and what happens when a turn
-runs out of tool rounds ([agent-ask-orama#14](https://github.com/oramasearch/agent-ask-orama/issues/14)).
+runs out of tool rounds.
 
 ## Which Model Scored Best
 
 The lake UX review of 2026-10-10 asked *"Which of my models in project … scored best on held-out
 AUC?"*. Ask Orama spent all ten tool rounds on `list_runs` (with a `limit` over the engine's 20),
 `get_model` with the wrong input, and other reads, and never reached a held-out score. The engine's
-run metrics carry no held-out score ([zetta#1239](https://github.com/oramasearch/zetta/issues/1239)),
+run metrics carry no held-out score,
 so the only reads that hold one are `get_run_report` (one call per run) and `list_models`, whose
 `metrics` keep the `held_out_*` figures training wrote on each model.
 
 `compare_models` is Ask Orama's tool for this question. One call:
 
-1. reads lake's named `list_models` as the person (lake#650), or
+1. reads lake's named `list_models` as the person, or
    `workspace_query {"capability": "list_models", "input": {}}` on an older lake;
 2. keeps the models of the project the person named (by name or id, ignoring case), or every
    model when none is named;

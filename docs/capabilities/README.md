@@ -6,9 +6,9 @@ and a list of the capabilities it may name with them. The list is derived from l
 go under *Reads you may call with lake_read*, changes under *Changes you may only propose with
 lake_propose* (lake's `x-lake-action`; without it, a `GET` is a read).
 
-## Every workspace engine capability by its own name (agent-ask-orama#16)
+## Every workspace engine capability by its own name
 
-Since [lake#650](https://github.com/oramasearch/lake/issues/650) every capability of a
+Since lake#650 every capability of a
 workspace's engine (projects, Pipelines, runs, experiments, models, search indexes, datasets,
 connections, agents, solutions and decisions) is a named lake capability with its own OpenAPI
 operation and input schema, the engine's fields at the top level beside `customer_id` and

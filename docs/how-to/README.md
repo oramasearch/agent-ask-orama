@@ -2,7 +2,7 @@
 
 A question about using Lake itself ("How do I load my first dataset?", "Where do I add a
 connection?") is answered from **Lake's Docs**, read in the turn, never from what data products
-usually look like (prompt `v14`, [lake#817](https://github.com/oramasearch/lake/issues/817)).
+usually look like (prompt `v14`).
 
 ## Why
 

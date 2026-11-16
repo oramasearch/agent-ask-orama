@@ -10,7 +10,7 @@ dataset.
 `page` (text values): `path` (`/`), `quickstart`, `quickstart_id`, `dataset`, `dataset_id`,
 `dataset_path` (`<database>.<table>`, for SQL), `rows`, `columns` (each with its detected kind and
 "(can be predicted)"), `predictable_columns` (or `none: …`), `search_index`,
-`search_index_published` and `snapshot_date`; and where the Quickstart is (lake#1204):
+`search_index_published` and `snapshot_date`; and where the Quickstart is:
 `quickstart_state` (`deciding`, `training`, `failed`, `trained` or `done`), `model` (what was asked
 for, training or trained), `model_problem` (why it failed, in plain words) and `quickstart_next`
 (the person's next step). Lake works the page out again on every status read, so each reply carries
@@ -51,7 +51,7 @@ after a confirm* says how to answer:
 - `trained` or `done`: say what they can do now (`quickstart_next`);
 - never tell the person to "configure" anything internal: graph hints, a K range, a holdout, engine
   settings or capability names. On 2026-10-25 a failed clustering was answered with "configure the
-  segmentation K range", which a person can't do (lake#1203, lake#1204).
+  segmentation K range", which a person can't do.
 
 Ask Orama still never writes: every one of these is a proposal Lake shows as the exact call and runs
 only when the person confirms it (`confirm_ask_proposal`).

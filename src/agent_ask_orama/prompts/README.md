@@ -6,7 +6,7 @@ Each prompt behavior change creates a new version; previous versions remain for 
 - `methodology_draft_v1.md` is the `methodology_draft` turn's own prompt (lake#688,
   `methodology_draft.py`, `DRAFT_PROMPT_VERSION`): the manifest, the fit/predict/score interface
   and the Data object, standard library preferred, pins without hashes (the agent looks them up).
-- `v17.md` is `v16.md` plus following the Quickstart after a confirm (lake#1204): Lake's page now
+- `v17.md` is `v16.md` plus following the Quickstart after a confirm: Lake's page now
   says where the Quickstart is (`quickstart_state`: deciding, training, failed, trained or done;
   `model`, `model_problem`, `quickstart_next`). After a confirm it says what started and what comes
   next, never "Done: train_quickstart"; asked about progress it reads `quickstart_status` in the
@@ -22,7 +22,7 @@ Each prompt behavior change creates a new version; previous versions remain for 
   only when nothing else fits or the person asks. Outside the Quickstart too, "what could I build?"
   is answered with ideas, never routed to a corpus agent. `agent.py`'s `quickstart_text` adds the
   same direction to the turn.
-- `v15.md` proposes only what can work (lake#1193, lake#1194): a project a proposal names must
+- `v15.md` proposes only what can work: a project a proposal names must
   exist (read `list_projects` first; lake and the agent both refuse one that does not); a new
   project's pipeline is one `compile_pipeline` with `create_project: true`; and lake's record of
   each earlier proposal (`pending`, `confirmed`, `failed`, `withheld`) is the truth, so after a
@@ -36,20 +36,20 @@ Each prompt behavior change creates a new version; previous versions remain for 
   `agent-autosuggest-corpus` (Auto-Suggest Corpus Agent) or `agent-project-corpus` (Project Corpus
   Agent), asking which agent the corpus trains when the person does not say, and uses lake#763's
   agent names throughout: Project Agent, Application Agent, Experiments Agent, Auto-Suggest Agent,
-  Agent Creator Agent (agent-ask-orama#28; lake lists all nine as ordinary agents, lake#788).
+  Agent Creator Agent (agent-ask-orama#28; lake lists all nine as ordinary agents).
 - `v12.md` names Design (projects, Pipelines, solutions, agents) and Train (agents to train, runs,
   experiments, models), sends a new agent to Design → Agents or the Agent Factory and improving one
   to Train → Agents, and speaks of designing an agent on `/design/agents` and `/design/agent` and of
-  training it on `/train/agents` and `/train/agent` (lake#653, agent-ask-orama#19).
+  training it on `/train/agents` and `/train/agent`.
 - `v11.md` drops the hand-kept engine reads and the `workspace_query` / `workspace_act` form
-  wherever lake names the engine capability itself (lake#650): workspace data is read and proposed
+  wherever lake names the engine capability itself: workspace data is read and proposed
   by its own name from the live lists, with a line for an older lake; the solution registry stays
   the engine's `list_solutions` through `workspace_query`; solutions are composed with
-  `compose_solution` and their holdout read with `get_holdout_experiment` (agent-ask-orama#16).
+  `compose_solution` and their holdout read with `get_holdout_experiment`.
 - `v10.md` adds `compare_models` for "which model scored best" (held-out scores of every model in
   one call), the `limit` and `id`/`run_id` inputs of the run and model reads, and what to say when
-  the turn's tool rounds run out (agent-ask-orama#14).
-- `v9.md` stops offering Orama's internal corpus and eval generators for delegation (reversed in
+  the turn's tool rounds run out.
+- `v9.md` stops offering the corpus and eval generators for delegation (reversed in
   `v13.md`).
 - `v8.md` routes study design, progress and explanations to ExperimentsAgent, summarizes proposals
   and results, and keeps confirmed study and promotion objects on lake's confirmation path.

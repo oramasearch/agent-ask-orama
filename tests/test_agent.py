@@ -1061,7 +1061,8 @@ def test_a_runnable_methodology_can_be_proposed_after_reading_the_registry():
     }]
 
 
-def test_an_unsupported_methodology_is_declined_with_its_issue():
+def test_an_unsupported_methodology_is_declined_with_its_issue(monkeypatch):
+    monkeypatch.setenv("ZETTA_ISSUE_URL", "https://tracker.example.com/issues/{n}")
     fake = FakeLake()
     client = Scripted(
         message(tool_calls=[call("lake_read", capability="workspace_query", input={
@@ -1077,7 +1078,7 @@ def test_an_unsupported_methodology_is_declined_with_its_issue():
     assert "zetta#1053" in answer.reply
     refusal = client.seen[2][-1]["content"]
     assert "not_supported" in refusal
-    assert "https://github.com/oramasearch/zetta/issues/1053" in refusal
+    assert "https://tracker.example.com/issues/1053" in refusal
     assert not any(request.url.path == "/v1/workspace_act" for request in fake.requests)
 
 
@@ -1149,7 +1150,8 @@ def test_a_solution_with_missing_components_is_described_as_a_preview():
     assert "production operation needs" in answer.reply
 
 
-def test_a_solution_sketch_is_refused_with_its_promotion_condition():
+def test_a_solution_sketch_is_refused_with_its_promotion_condition(monkeypatch):
+    monkeypatch.setenv("ZETTA_ISSUE_URL", "https://tracker.example.com/issues/{n}")
     fake = FakeLake()
     client = Scripted(
         message(tool_calls=[call("lake_read", capability="workspace_query", input={
@@ -1168,7 +1170,7 @@ def test_a_solution_sketch_is_refused_with_its_promotion_condition():
     refusal = client.seen[2][-1]["content"]
     assert "not_supported" in refusal
     assert "add supported methodology callbacks" in refusal
-    assert "https://github.com/oramasearch/zetta/issues/1102" in refusal
+    assert "https://tracker.example.com/issues/1102" in refusal
     assert not any(request.url.path == "/v1/workspace_act" for request in fake.requests)
 
 
@@ -2196,3 +2198,12 @@ def test_after_a_failure_it_reads_the_status_and_proposes_the_corrected_change()
     assert answer.proposals[0]["input"]["quickstart_id"] == "qs-1"
     asked = client.seen[0][-1]["content"]
     assert "failed to train (Clustering needs at least 2 rows" in asked
+
+
+def test_an_engine_issue_is_named_without_a_link_when_no_tracker_is_configured(monkeypatch):
+    monkeypatch.delenv("ZETTA_ISSUE_URL", raising=False)
+    assert agent.issue_url("zetta#1053") == ""
+    assert "tracked by zetta#1053." in agent.unsupported("M-14", "Speech analytics", "zetta#1053")
+    monkeypatch.setenv("ZETTA_ISSUE_URL", "https://tracker.example.com/issues/{n}")
+    assert agent.issue_url("zetta#1053") == "https://tracker.example.com/issues/1053"
+    assert agent.issue_url("lake#1") == ""
