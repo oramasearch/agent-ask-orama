@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Ask Orama as the lake-wide service (zetta#1018): `POST /v1/turn`, `GET /healthz`.
 
 lake calls it for every message in the Ask Orama panel, passing the person's delegated key for the
