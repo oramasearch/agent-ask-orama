@@ -2,17 +2,17 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "agent-ask-orama-845783a0bf92",
-  "documentNamespace": "https://github.com/oramasearch/agent-ask-orama/sbom/845783a0bf92af7457126da6a1268c86a9d3cd92",
+  "name": "agent-ask-orama-0c3fdc05eeb4",
+  "documentNamespace": "https://github.com/oramasearch/agent-ask-orama/sbom/0c3fdc05eeb4175e01afd3d2be9ea0a50b8ea9fa",
   "creationInfo": {
-    "created": "2026-11-16T01:53:43Z",
+    "created": "2026-11-16T06:28:57Z",
     "creators": [
       "Organization: OramaSearch, Inc.",
       "Tool: tools/sbom.py",
       "Tool: syft"
     ],
     "licenseListVersion": "3.29",
-    "comment": "Made from source commit 845783a0bf92af7457126da6a1268c86a9d3cd92 by tools/sbom.py."
+    "comment": "Made from source commit 0c3fdc05eeb4175e01afd3d2be9ea0a50b8ea9fa by tools/sbom.py."
   },
   "documentDescribes": [
     "SPDXRef-DocumentRoot"
@@ -280,7 +280,7 @@
     {
       "name": "agent-ask-orama",
       "SPDXID": "SPDXRef-DocumentRoot",
-      "versionInfo": "845783a0bf92",
+      "versionInfo": "0c3fdc05eeb4",
       "downloadLocation": "git+https://github.com/oramasearch/agent-ask-orama.git",
       "homepage": "https://github.com/oramasearch/agent-ask-orama",
       "filesAnalyzed": false,
@@ -2009,8 +2009,8 @@
     },
     {
       "name": "python",
-      "SPDXID": "SPDXRef-Image-python-3e064d07035dff47",
-      "versionInfo": "3.12-slim",
+      "SPDXID": "SPDXRef-Image-python-bbeb47b8d77ac77d",
+      "versionInfo": "3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -2018,12 +2018,12 @@
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "NOASSERTION",
       "primaryPackagePurpose": "CONTAINER",
-      "comment": "Container base image (python:3.12-slim), FROM in Dockerfile. Its own packages are in the image SBOM of each release image.",
+      "comment": "Container base image (python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b), FROM in Dockerfile. Its own packages are in the image SBOM of each release image.",
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:docker/python@3.12-slim"
+          "referenceLocator": "pkg:docker/python@sha256%3A5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b?tag=3.12-slim"
         }
       ]
     },
@@ -2551,7 +2551,7 @@
       "spdxElementId": "SPDXRef-DOCUMENT"
     },
     {
-      "relatedSpdxElement": "SPDXRef-Image-python-3e064d07035dff47",
+      "relatedSpdxElement": "SPDXRef-Image-python-bbeb47b8d77ac77d",
       "relationshipType": "DEPENDS_ON",
       "spdxElementId": "SPDXRef-DocumentRoot"
     },
