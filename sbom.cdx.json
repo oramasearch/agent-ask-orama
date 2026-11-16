@@ -2,10 +2,10 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.7.schema.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.7",
-  "serialNumber": "urn:uuid:f8194834-c72e-5486-8daf-118ddb847e14",
+  "serialNumber": "urn:uuid:2a6bcb4d-fee4-55b1-b7e6-46ec10758bc9",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-11-16T06:28:57Z",
+    "timestamp": "2026-11-16T07:24:19Z",
     "tools": {
       "components": [
         {
@@ -24,12 +24,12 @@
   },
   "components": [
     {
-      "bom-ref": "pkg:pypi/agent-ask-orama@0.2.1?package-id=Package-python-agent-ask-orama-edd164ec62129659",
+      "bom-ref": "pkg:pypi/agent-ask-orama@0.3.0?package-id=Package-python-agent-ask-orama-c24b8b6abbd58146",
       "type": "library",
       "name": "agent-ask-orama",
-      "version": "0.2.1",
-      "cpe": "cpe:2.3:a:python-agent-ask-orama:python-agent-ask-orama:0.2.1:*:*:*:*:*:*:*",
-      "purl": "pkg:pypi/agent-ask-orama@0.2.1",
+      "version": "0.3.0",
+      "cpe": "cpe:2.3:a:python-agent-ask-orama:python-agent-ask-orama:0.3.0:*:*:*:*:*:*:*",
+      "purl": "pkg:pypi/agent-ask-orama@0.3.0",
       "properties": [
         {
           "name": "syft:package:language",
@@ -41,191 +41,191 @@
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python-agent-ask-orama:python_agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python-agent-ask-orama:python_agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python_agent_ask_orama:python-agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python_agent_ask_orama:python-agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python_agent_ask_orama:python_agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python_agent_ask_orama:python_agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python-agent-ask:python-agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python-agent-ask:python-agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python-agent-ask:python_agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python-agent-ask:python_agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python_agent_ask:python-agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python_agent_ask:python-agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python_agent_ask:python_agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python_agent_ask:python_agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent-ask-orama:python-agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent-ask-orama:python-agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent-ask-orama:python_agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent-ask-orama:python_agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent_ask_orama:python-agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent_ask_orama:python-agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent_ask_orama:python_agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent_ask_orama:python_agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python-agent-ask-orama:agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python-agent-ask-orama:agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python-agent-ask-orama:agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python-agent-ask-orama:agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python_agent_ask_orama:agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python_agent_ask_orama:agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python_agent_ask_orama:agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python_agent_ask_orama:agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python-agent:python-agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python-agent:python-agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python-agent:python_agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python-agent:python_agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python_agent:python-agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python_agent:python-agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python_agent:python_agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python_agent:python_agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent-ask:python-agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent-ask:python-agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent-ask:python_agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent-ask:python_agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent_ask:python-agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent_ask:python-agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent_ask:python_agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent_ask:python_agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python-agent-ask:agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python-agent-ask:agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python-agent-ask:agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python-agent-ask:agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python_agent_ask:agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python_agent_ask:agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python_agent_ask:agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python_agent_ask:agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent-ask-orama:agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent-ask-orama:agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent-ask-orama:agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent-ask-orama:agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent_ask_orama:agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent_ask_orama:agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent_ask_orama:agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent_ask_orama:agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python:python-agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python:python-agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python:python_agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python:python_agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent:python-agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent:python-agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent:python_agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent:python_agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python-agent:agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python-agent:agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python-agent:agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python-agent:agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python_agent:agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python_agent:agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python_agent:agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python_agent:agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent-ask:agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent-ask:agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent-ask:agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent-ask:agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent_ask:agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent_ask:agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent_ask:agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent_ask:agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python:agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python:agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:python:agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:python:agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent:agent-ask-orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent:agent-ask-orama:0.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:agent:agent_ask_orama:0.2.1:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:agent:agent_ask_orama:0.3.0:*:*:*:*:*:*:*"
         }
       ]
     },
@@ -233,7 +233,7 @@
       "bom-ref": "DocumentRoot",
       "type": "library",
       "name": "agent-ask-orama",
-      "version": "0c3fdc05eeb4",
+      "version": "v0.3.0",
       "licenses": [
         {
           "license": {
@@ -2020,7 +2020,7 @@
       ]
     },
     {
-      "ref": "pkg:pypi/agent-ask-orama@0.2.1?package-id=Package-python-agent-ask-orama-edd164ec62129659",
+      "ref": "pkg:pypi/agent-ask-orama@0.3.0?package-id=Package-python-agent-ask-orama-c24b8b6abbd58146",
       "dependsOn": [
         "pkg:pypi/httpx@0.28.1?package-id=Package-python-httpx-b8665b7937415e27",
         "pkg:pypi/openai@3.19.2?package-id=Package-python-openai-51a4dfb974c90277"
