@@ -4,7 +4,7 @@ Every `lake_read`, `compare_models`, `mcp_tool` read and delegated answer reache
 observation (`observation` and `fit` in `agent.py`): the capability's JSON value, at most
 `OBSERVATION_LIMIT` (20000) characters.
 
-## A long list is trimmed by its items, never cut mid-text (agent-ask-orama#21)
+## A long list is trimmed by its items, never cut mid-text
 
 Until agent-ask-orama#21 an observation was the JSON text sliced at 20000 characters. The engine's
 `list_datasets` answers every dataset with its full schema and no total, so on the dev Lake

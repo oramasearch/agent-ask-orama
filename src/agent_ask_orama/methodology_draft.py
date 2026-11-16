@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Ask Orama writes the first draft of a workspace methodology (lake#688).
 
 Lake's New Methodology drawer sends Ask Orama a `methodology_draft` turn through `agent_turn`: the

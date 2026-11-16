@@ -1,4 +1,6 @@
-"""The service's conversation memory, bounded (agent-ask-orama#44, LSR-076).
+# SPDX-License-Identifier: MIT
+
+"""The service's conversation memory, bounded (agent-ask-orama#44).
 
 Ask Orama is one shared service for every tenant on a lake. Its conversations used to live in a
 plain dict that only grew: every conversation ever started stayed in memory for the life of the

@@ -16,7 +16,7 @@ measured readout, prompt v6 first reads:
 ```
 
 The call uses lake's read-only `workspace_query`, also on a lake that names every engine
-capability (lake#650): lake's own `list_solutions` and `get_solution` add the workspace's own
+capability: lake's own `list_solutions` and `get_solution` add the workspace's own
 solutions to the catalogue and are not the registry. Ask Orama does not carry catalogue entries in its
 prompt and does not reuse a result from an earlier turn. It uses `get_solution` for the current
 details of an entry and describes the fields the engine returns, including its product copy, use

@@ -1,6 +1,6 @@
 # Connected MCP tools
 
-**lake#652, decision 60.** A workspace in lake can be the client of remote MCP servers (lake
+A workspace in lake can be the client of remote MCP servers (lake
 `docs/api/mcp-connections.md`). Ask Orama sees the **allowed** tools of the workspace's connections
 in its index at every turn and uses them through lake; it never holds a server's credential.
 

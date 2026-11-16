@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Ask Orama's methodology_draft turn (lake#688), without a network: the model is scripted and the
 package index is a fake (or an httpx MockTransport)."""
 

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Ask Orama: the general agent for all of lake."""
 
 __all__ = ["serve", "answer_turn"]

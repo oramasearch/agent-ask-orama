@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """A conversation is continued only by its own turns, never by naming its id (agent-ask-orama#42)."""
 
 from __future__ import annotations

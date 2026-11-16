@@ -1,8 +1,8 @@
 # Designing and Training Agents
 
 Where Ask Orama sends a person for agent work, and how it answers from Lake Console's agent pages
-([agent-ask-orama#19](https://github.com/oramasearch/agent-ask-orama/issues/19), after
-[lake#653](https://github.com/oramasearch/lake/issues/653)).
+(agent-ask-orama#19, after
+lake#653).
 
 ## Two Homes for Agents
 
@@ -26,7 +26,7 @@ people to Train to build an agent. Prompt `v12`:
 
 ## The Page a Turn Is Asked From
 
-A turn carries the page the person is on (`page`, with its `path` and query values, lake#258).
+A turn carries the page the person is on (`page`, with its `path` and query values).
 `agent_page_work` in `agent.py` reads that path, with or without the workspace's `/w/<id>` prefix:
 
 - `/design/agents`, `/design/agents/new`, `/design/agent` → `design`;
@@ -54,16 +54,15 @@ Page names are matched however the arrow is written (`→`, `->`, `>`, `›`), a
 page ("train it on Train → Agents") is offering it, not speaking of it, so it is not counted. A
 case's `page` is sent with its turn (`run_case`). The runner also counts a POST to any read
 capability, and to `list_mcp_connection_tools`, as a read, so the connected-tools listing every
-turn sends (lake#652) is not graded as a write.
+turn sends is not graded as a write.
 
 ## Evals and Training Corpora
 
-Steve, 2026-10-17: *"if I want lake to help me build a training corpus, I'll need the training
-corpus agent to do that for me"* and *"same with creating an eval"*
-([agent-ask-orama#28](https://github.com/oramasearch/agent-ask-orama/issues/28)). Lake lists all
-nine library agents as ordinary agents ([lake#788](https://github.com/oramasearch/lake/issues/788),
+A person who wants lake to build a training corpus or an eval should be able to ask for it, so the
+corpus and eval agents are offered like any other. Lake lists all
+nine library agents as ordinary agents (lake#788,
 lake PR #793), and `agent_turn` reaches each. Prompt `v9` had stopped offering three of them as
-Orama's internal tooling; prompt `v13` offers them again:
+tooling for maintainers only; prompt `v13` offers them again:
 
 | Key | Name | What a person asks for |
 |---|---|---|
@@ -77,7 +76,7 @@ corpus goes to the corpus agent for the agent it trains (the Auto-Suggest Agent'
 not say which, Ask Orama asks. It never writes an eval or a corpus itself. The `delegate` tool's
 description lists all three with the other library agents.
 
-`v13` also uses [lake#763](https://github.com/oramasearch/lake/issues/763)'s names everywhere:
+`v13` also uses lake#763's names everywhere:
 Project Agent, Application Agent, Experiments Agent, Auto-Suggest Agent, Agent Creator Agent (the
 agent behind the Agent Factory), Eval Generator Agent, Auto-Suggest Corpus Agent and Project Corpus
 Agent.

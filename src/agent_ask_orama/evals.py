@@ -1,6 +1,8 @@
+# SPDX-License-Identifier: MIT
+
 """Ask Orama's evals: generated from lake's own capability index, graded by rules, run live.
 
-Generated, never hand-written (zetta-bridge `docs/agents/scaffold.md`): the cases come from the
+Generated, never hand-written: the cases come from the
 capabilities the live lake serves, so a new capability is a new case without anyone writing one.
 Graded deterministically, never by a judge:
 
