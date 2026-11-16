@@ -2,17 +2,17 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "agent-ask-orama-aabe78017383",
-  "documentNamespace": "https://github.com/oramasearch/agent-ask-orama/sbom/aabe78017383ae1de46c4bc826dd4f2a0f80b28e",
+  "name": "agent-ask-orama-845783a0bf92",
+  "documentNamespace": "https://github.com/oramasearch/agent-ask-orama/sbom/845783a0bf92af7457126da6a1268c86a9d3cd92",
   "creationInfo": {
-    "created": "2026-11-15T17:25:28Z",
+    "created": "2026-11-16T01:53:43Z",
     "creators": [
       "Organization: OramaSearch, Inc.",
       "Tool: tools/sbom.py",
       "Tool: syft"
     ],
     "licenseListVersion": "3.29",
-    "comment": "Made from source commit aabe78017383ae1de46c4bc826dd4f2a0f80b28e by tools/sbom.py."
+    "comment": "Made from source commit 845783a0bf92af7457126da6a1268c86a9d3cd92 by tools/sbom.py."
   },
   "documentDescribes": [
     "SPDXRef-DocumentRoot"
@@ -280,7 +280,7 @@
     {
       "name": "agent-ask-orama",
       "SPDXID": "SPDXRef-DocumentRoot",
-      "versionInfo": "aabe78017383",
+      "versionInfo": "845783a0bf92",
       "downloadLocation": "git+https://github.com/oramasearch/agent-ask-orama.git",
       "homepage": "https://github.com/oramasearch/agent-ask-orama",
       "filesAnalyzed": false,
