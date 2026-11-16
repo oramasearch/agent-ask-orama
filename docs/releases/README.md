@@ -10,6 +10,7 @@ verified; it is never produced by a second build.
 
 | Release | Date | Summary |
 |---|---|---|
+| [v0.3.0](v0.3.0.md) | 2026-11-16 | A minor: the MIT licence, a security policy and the public-export preparation (the engine-issue link in refusals is the `ZETTA_ISSUE_URL` setting); the image bases pinned by digest |
 | [v0.2.1](v0.2.1.md) | 2026-10-25 | A patch: prompt v17 follows the Quickstart after a confirm (what started, progress from `quickstart_status`, the corrected proposal after a failure; lake#1204) |
 | [v0.2.0](v0.2.0.md) | 2026-10-25 | A minor: the security-review fixes (constant-time service token refused when unset, the credential only to `LAKE_URL`, conversations owned by Lake's claim and bounded, bus backpressure, no trace file), prompt v15 (only proposals that can work) and v16 (the Quickstart's model step) |
 | [v0.1.1](v0.1.1.md) | 2026-10-19 | A patch: prompt v14 answers how-to questions from Lake's Docs, with the exact page names and links, and a `how_to` eval case |

@@ -4,7 +4,7 @@
 **Agent Library**. lake shows it as a panel on every page
 and calls this service for every message.
 
-**Current release: [v0.2.1](docs/releases/v0.2.1.md)** (2026-10-25, prompt v17).
+**Current release: [v0.3.0](docs/releases/v0.3.0.md)** (2026-11-16, prompt v17).
 
 ## What it does
 
